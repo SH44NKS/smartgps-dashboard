@@ -1,244 +1,261 @@
-import fetch from "node-fetch";
-import FormData from "form-data";
+const DEFAULT_BASE_URL = 'https://sp.tracker-net.app';
+const MAX_PAGES = Number(process.env.SMARTGPS_MAX_PAGES || 500);
 
-const BASE_URL = "https://sp.tracker-net.app";
-const MAX_PAGES = 500; // Aumentado para 500 páginas (500 x 20 = 10.000 itens)
+const ROUTE_ALIASES = {
+  '/api/admin/clients': '/api/admin/get_clients',
+  '/api/get_technicians': '/api/admin/technicians',
+  '/api/technicians': '/api/admin/technicians',
+  '/api/schedules': '/api/admin/technicians/appointments',
+  '/api/get_device_history': '/api/get_history',
+  '/api/schedule_order': '/schedule_order',
+  'schedule_order': '/schedule_order',
+};
+
+const ALLOWED_PATHS = new Set([
+  '/api/login',
+  '/api/get_devices',
+  '/api/get_devices_latest',
+  '/api/get_devices_status',
+  '/api/get_history',
+  '/api/add_device',
+  '/api/edit_device',
+  '/api/destroy_device',
+  '/api/admin/get_clients',
+  '/api/admin/client',
+  '/api/admin/technicians',
+  '/api/admin/technicians/appointments',
+  '/api/get_orders',
+  '/api/add_order',
+  '/api/edit_order',
+  '/api/remove_order',
+  '/schedule_order',
+  '/api/admin/get_user_by_cpf_cnpj',
+]);
+
+const ALLOWED_PREFIXES = [
+  '/api/admin/technicians/',
+];
+
+function send(res, statusCode, payload) {
+  res.status(statusCode).json(payload);
+}
+
+function normalizePath(path = '') {
+  const [rawPathname, query = ''] = String(path).split('?');
+  const pathname = ROUTE_ALIASES[rawPathname] || rawPathname;
+  return { pathname, query };
+}
+
+function assertAllowedPath(pathname) {
+  const allowedByPrefix = ALLOWED_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+  if (!ALLOWED_PATHS.has(pathname) && !allowedByPrefix) {
+    const error = new Error(`Rota nao permitida: ${pathname}`);
+    error.statusCode = 400;
+    throw error;
+  }
+}
+
+function buildUrl(path, apiHash) {
+  const baseUrl = process.env.SMARTGPS_BASE_URL || DEFAULT_BASE_URL;
+  const { pathname, query } = normalizePath(path);
+  assertAllowedPath(pathname);
+
+  const url = new URL(pathname, baseUrl);
+  if (query) {
+    const params = new URLSearchParams(query);
+    params.forEach((value, key) => url.searchParams.set(key, value));
+  }
+  if (apiHash && !url.searchParams.has('user_api_hash')) {
+    url.searchParams.set('user_api_hash', apiHash);
+  }
+  if (pathname === '/api/get_devices_latest' && !url.searchParams.has('time')) {
+    url.searchParams.set('time', '0');
+  }
+  return url;
+}
+
+function toFormData(body = {}) {
+  const form = new FormData();
+  Object.entries(body || {}).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return;
+    form.append(key, String(value));
+  });
+  return form;
+}
+
+async function parseSmartGpsResponse(response) {
+  const text = await response.text();
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    return { status: 0, message: 'Resposta nao JSON da SmartGPS', raw: text };
+  }
+}
+
+function extractItems(data) {
+  if (!data) return [];
+  if (Array.isArray(data)) return flattenGroups(data);
+  if (Array.isArray(data.items?.data)) return flattenGroups(data.items.data);
+  if (Array.isArray(data.data?.data)) return flattenGroups(data.data.data);
+  if (Array.isArray(data.items)) return flattenGroups(data.items);
+  if (Array.isArray(data.data)) return flattenGroups(data.data);
+  if (Array.isArray(data.devices)) return flattenGroups(data.devices);
+  if (Array.isArray(data.clients)) return flattenGroups(data.clients);
+  if (Array.isArray(data.orders)) return flattenGroups(data.orders);
+  if (Array.isArray(data.technicians)) return flattenGroups(data.technicians);
+  return [];
+}
+
+function flattenGroups(items) {
+  return items.flatMap((item) => Array.isArray(item?.items) ? item.items : item);
+}
+
+function getLastPage(data) {
+  return Number(data?.last_page || data?.items?.last_page || data?.data?.last_page || 1);
+}
+
+async function login() {
+  const apiHash = process.env.SMARTGPS_API_HASH || process.env.SMARTGPS_USER_API_HASH;
+  if (apiHash) {
+    return { status: 1, user_api_hash: apiHash, source: 'env' };
+  }
+
+  const email = process.env.SMARTGPS_EMAIL || process.env.SMARTGPS_LOGIN;
+  const password = process.env.SMARTGPS_PASSWORD;
+  if (!email || !password) {
+    return {
+      status: 0,
+      message: 'Configure SMARTGPS_API_HASH ou SMARTGPS_EMAIL/SMARTGPS_PASSWORD no Vercel.',
+    };
+  }
+
+  const response = await fetch(buildUrl('/api/login'), {
+    method: 'POST',
+    body: toFormData({ email, password }),
+  });
+  const data = await parseSmartGpsResponse(response);
+
+  if (!response.ok) {
+    return { status: 0, message: 'Falha no login SmartGPS', upstreamStatus: response.status, data };
+  }
+
+  return data;
+}
+
+async function getApiHash() {
+  const apiHash = process.env.SMARTGPS_API_HASH || process.env.SMARTGPS_USER_API_HASH;
+  if (apiHash) return apiHash;
+  const auth = await login();
+  return auth.user_api_hash || auth.api_hash || auth.hash || '';
+}
+
+async function fetchSmartGps(path, method, body, apiHash, contentType) {
+  const url = buildUrl(path, apiHash);
+  const options = { method };
+
+  if (!['GET', 'HEAD'].includes(method)) {
+    if (contentType === 'json' || url.pathname === '/schedule_order') {
+      options.headers = { 'Content-Type': 'application/json' };
+      options.body = JSON.stringify(body || {});
+    } else {
+      options.body = toFormData(body || {});
+    }
+  }
+
+  const response = await fetch(url, options);
+  const data = await parseSmartGpsResponse(response);
+  return { response, data };
+}
+
+async function fetchAllPages(path, apiHash) {
+  const firstUrl = buildUrl(path, apiHash);
+  firstUrl.searchParams.set('page', firstUrl.searchParams.get('page') || '1');
+
+  const firstResponse = await fetch(firstUrl);
+  const firstData = await parseSmartGpsResponse(firstResponse);
+  if (!firstResponse.ok) {
+    return { status: 0, message: 'Erro ao buscar dados', upstreamStatus: firstResponse.status, data: firstData };
+  }
+
+  let allItems = extractItems(firstData);
+  const totalPages = getLastPage(firstData);
+  const maxPages = Math.min(totalPages, MAX_PAGES);
+
+  for (let batchStart = 2; batchStart <= maxPages; batchStart += 5) {
+    const requests = [];
+    for (let page = batchStart; page <= Math.min(batchStart + 4, maxPages); page += 1) {
+      const pageUrl = buildUrl(path, apiHash);
+      pageUrl.searchParams.set('page', String(page));
+      requests.push(fetch(pageUrl).then(parseSmartGpsResponse).catch(() => null));
+    }
+
+    const pages = await Promise.all(requests);
+    pages.forEach((pageData) => {
+      allItems = allItems.concat(extractItems(pageData));
+    });
+  }
+
+  const now = Date.now();
+  const items = allItems.map((item) => {
+    const lastUpdate = item.time || item.server_time || item.server_time_latest || item.time_latest || item.updated_at;
+    if (!lastUpdate) return item;
+    const parsed = new Date(String(lastUpdate).replace(' ', 'T')).getTime();
+    if (!Number.isFinite(parsed)) return item;
+    const days = Math.floor((now - parsed) / 86400000);
+    return days > 45 ? { ...item, maintenance_status: 'manutencao', days_without_communication: days } : item;
+  });
+
+  return {
+    status: 1,
+    items,
+    total: items.length,
+    pages_fetched: maxPages,
+    total_pages: totalPages,
+  };
+}
 
 export default async function handler(req, res) {
-  // CORS headers
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
+  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Content-Type');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({ status: 0, message: 'Method not allowed' });
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return send(res, 405, { status: 0, message: 'Use POST em /api/smartgps.' });
 
   try {
-    const { action, path, method = "GET", body = {}, fetchAll = false } = req.body || {};
+    const { action, path, method = 'GET', body = {}, fetchAll = false, contentType } = req.body || {};
 
-    // Login
-    const loginForm = new FormData();
-    loginForm.append("email", process.env.SMARTGPS_EMAIL || "");
-    loginForm.append("password", process.env.SMARTGPS_PASSWORD || "");
+    if (action === 'login') {
+      return send(res, 200, await login());
+    }
 
-    const loginResponse = await fetch(`${BASE_URL}/api/login`, {
-      method: "POST",
-      body: loginForm,
-      headers: loginForm.getHeaders()
-    });
-
-    const loginData = await loginResponse.json();
-
-    if (!loginData.user_api_hash) {
-      return res.status(401).json({
-        status: 0,
-        message: "Falha na autenticação",
-        login_response: loginData
+    if (action === 'sync_sheet') {
+      const { sheetUrl, data } = body;
+      if (!sheetUrl) return send(res, 400, { status: 0, message: 'sheetUrl nao informado.' });
+      await fetch(sheetUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data || {}),
       });
+      return send(res, 200, { status: 1, message: 'Sincronizado com planilha.' });
     }
 
-    const apiHash = loginData.user_api_hash;
+    if (!path) return send(res, 400, { status: 0, message: 'Path nao informado.' });
 
-    if (action === "login") {
-      return res.status(200).json({
-        status: 1,
-        message: "Login realizado com sucesso",
-        user_api_hash: apiHash
-      });
+    const apiHash = await getApiHash();
+    if (!apiHash) return send(res, 401, { status: 0, message: 'Nao foi possivel obter user_api_hash.' });
+
+    if (fetchAll && String(method).toUpperCase() === 'GET') {
+      return send(res, 200, await fetchAllPages(path, apiHash));
     }
 
-    if (!path) {
-      return res.status(400).json({
-        status: 0,
-        message: "Path não informado"
-      });
-    }
-
-    // Função para fazer requisição paginada
-    async function fetchPage(page = 1) {
-      const separator = path.includes("?") ? "&" : "?";
-      let url = `${BASE_URL}${path}${separator}user_api_hash=${encodeURIComponent(apiHash)}`;
-      
-      url += `&page=${page}`;
-      
-      if (path.includes('/api/get_devices_latest')) {
-        url += '&time=0';
-      }
-
-      const options = {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json'
-        }
-      };
-
-      const response = await fetch(url, options);
-      const responseText = await response.text();
-      
-      try {
-        return JSON.parse(responseText);
-      } catch {
-        return null;
-      }
-    }
-
-    // Se for para buscar tudo (fetchAll) - OTIMIZADO PARA GRANDES VOLUMES
-    if (fetchAll && method === "GET") {
-      let allItems = [];
-      let currentPage = 1;
-      let totalPages = 1;
-      let perPage = 20;
-      
-      try {
-        // Primeira requisição para saber o total
-        const firstPage = await fetchPage(1);
-        
-        if (!firstPage) {
-          return res.status(500).json({ status: 0, message: "Erro ao buscar dados" });
-        }
-
-        // Extrair itens da primeira página
-        let firstPageItems = [];
-        if (firstPage.items && Array.isArray(firstPage.items)) {
-          firstPageItems = firstPage.items;
-        } else if (firstPage.data && Array.isArray(firstPage.data)) {
-          firstPageItems = firstPage.data;
-        } else if (Array.isArray(firstPage)) {
-          firstPageItems = firstPage;
-        }
-        
-        allItems = [...firstPageItems];
-        
-        // Verificar se tem paginação
-        if (firstPage.last_page && firstPage.last_page > 1) {
-          totalPages = firstPage.last_page;
-          perPage = firstPage.per_page || 20;
-          
-          // Buscar páginas restantes (agora até 500 páginas)
-          const maxPages = Math.min(totalPages, MAX_PAGES);
-          
-          // Buscar em lotes de 5 páginas simultâneas para acelerar
-          for (let batchStart = 2; batchStart <= maxPages; batchStart += 5) {
-            const batchEnd = Math.min(batchStart + 4, maxPages);
-            const promises = [];
-            
-            for (let page = batchStart; page <= batchEnd; page++) {
-              promises.push(fetchPage(page));
-            }
-            
-            const results = await Promise.all(promises);
-            
-            for (const pageData of results) {
-              if (pageData) {
-                let pageItems = [];
-                if (pageData.items && Array.isArray(pageData.items)) {
-                  pageItems = pageData.items;
-                } else if (pageData.data && Array.isArray(pageData.data)) {
-                  pageItems = pageData.data;
-                } else if (Array.isArray(pageData)) {
-                  pageItems = pageData;
-                }
-                
-                allItems = [...allItems, ...pageItems];
-              }
-            }
-          }
-        }
-        
-        // Marcar dispositivos com mais de 45 dias sem comunicação como "Manutenção"
-        const now = new Date();
-        const itemsComManutencao = allItems.map(item => {
-          const lastUpdate = item.time || item.server_time || item.updated_at;
-          if (lastUpdate) {
-            const lastDate = new Date(lastUpdate.replace(' ', 'T'));
-            const daysDiff = Math.floor((now - lastDate) / (1000 * 60 * 60 * 24));
-            if (daysDiff > 45) {
-              return { ...item, maintenance_status: 'manutencao', days_without_communication: daysDiff };
-            }
-          }
-          return item;
-        });
-        
-        return res.status(200).json({
-          status: 1,
-          items: itemsComManutencao,
-          total: itemsComManutencao.length,
-          pages_fetched: Math.min(totalPages, MAX_PAGES),
-          total_pages: totalPages,
-          per_page: perPage
-        });
-        
-      } catch (error) {
-        return res.status(500).json({ status: 0, message: error.message });
-      }
-    }
-
-    // Dentro do handler, adicione esta ação:
-if (action === "sync_sheet") {
-  const { sheetUrl, data } = body;
-  // Aqui você pode fazer uma requisição HTTP para o Google Apps Script
-  // Exemplo:
-  const syncResponse = await fetch(sheetUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
-  });
-  return res.status(200).json({ status: 1, message: "Sincronizado com planilha" });
-}
-    // Comportamento normal (única página)
-    const separator = path.includes("?") ? "&" : "?";
-    let url = `${BASE_URL}${path}${separator}user_api_hash=${encodeURIComponent(apiHash)}`;
-    
-    if (path.includes('/api/get_devices_latest')) {
-      url += '&time=0';
-    }
-
-    const options = {
-      method,
-      headers: {
-        'Accept': 'application/json'
-      }
-    };
-
-    if (method !== "GET" && body && Object.keys(body).length > 0) {
-      const form = new FormData();
-      
-      Object.entries(body).forEach(([key, value]) => {
-        if (value !== undefined && value !== null && value !== "") {
-          form.append(key, String(value));
-        }
-      });
-
-      options.body = form;
-      options.headers = {
-        ...options.headers,
-        ...form.getHeaders()
-      };
-    }
-
-    const response = await fetch(url, options);
-    const responseText = await response.text();
-    
-    let data;
-    try {
-      data = JSON.parse(responseText);
-    } catch {
-      data = { raw: responseText };
-    }
-
-    return res.status(200).json(data);
-
+    const { response, data } = await fetchSmartGps(path, String(method).toUpperCase(), body, apiHash, contentType);
+    return send(res, response.ok ? 200 : response.status, data);
   } catch (error) {
-    console.error("Erro:", error);
-    return res.status(500).json({
+    return send(res, error.statusCode || 500, {
       status: 0,
-      message: error.message
+      message: error.message || 'Erro interno no proxy SmartGPS.',
     });
   }
 }
