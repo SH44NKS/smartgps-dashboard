@@ -4,32 +4,51 @@ import FormData from "form-data";
 const BASE_URL = "https://sp.tracker-net.app";
 
 export default async function handler(req, res) {
+  // Configurar CORS
+  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
+  );
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   try {
     const { action, path, method = "GET", body = {} } = req.body || {};
 
-    let apiHash;
-
+    // Fazer login e obter hash
+    console.log("Fazendo login na SmartGPS...");
+    
     const loginForm = new FormData();
     loginForm.append("email", process.env.SMARTGPS_EMAIL);
     loginForm.append("password", process.env.SMARTGPS_PASSWORD);
 
     const loginResponse = await fetch(`${BASE_URL}/api/login`, {
       method: "POST",
-      body: loginForm
+      body: loginForm,
+      headers: {
+        ...loginForm.getHeaders()
+      }
     });
 
     const loginData = await loginResponse.json();
+    console.log("Resposta do login:", loginData);
 
-    if (!loginData.user_api_hash) {
+    if (!loginData.user_api_hash && !loginData.status) {
       return res.status(401).json({
         status: 0,
         message: "Erro ao fazer login na SmartGPS",
-        loginData
+        debug: loginData
       });
     }
 
-    apiHash = loginData.user_api_hash;
+    const apiHash = loginData.user_api_hash || process.env.SMARTGPS_API_HASH;
 
+    // Se for apenas ação de login
     if (action === "login") {
       return res.status(200).json({
         status: 1,
@@ -38,6 +57,7 @@ export default async function handler(req, res) {
       });
     }
 
+    // Para outras requisições
     if (!path) {
       return res.status(400).json({
         status: 0,
@@ -45,41 +65,60 @@ export default async function handler(req, res) {
       });
     }
 
+    // Construir URL com hash
     const separator = path.includes("?") ? "&" : "?";
     const url = `${BASE_URL}${path}${separator}user_api_hash=${encodeURIComponent(apiHash)}`;
+    
+    console.log("Chamando API:", url);
+    console.log("Método:", method);
+    console.log("Body:", body);
 
     const options = {
-      method
+      method,
+      headers: {}
     };
 
-    if (method !== "GET") {
+    if (method !== "GET" && body && Object.keys(body).length > 0) {
       const form = new FormData();
 
       Object.entries(body).forEach(([key, value]) => {
         if (value !== undefined && value !== null && value !== "") {
-          form.append(key, value);
+          form.append(key, String(value));
         }
       });
 
       options.body = form;
+      options.headers = {
+        ...options.headers,
+        ...form.getHeaders()
+      };
     }
 
     const response = await fetch(url, options);
-    const text = await response.text();
+    const responseText = await response.text();
+    
+    console.log("Status da resposta:", response.status);
+    console.log("Resposta:", responseText.substring(0, 500));
 
     let data;
     try {
-      data = JSON.parse(text);
+      data = JSON.parse(responseText);
     } catch {
-      data = { raw: text };
+      data = { 
+        raw: responseText,
+        status: 0,
+        message: "Resposta não é JSON válido"
+      };
     }
 
     return res.status(response.status).json(data);
 
   } catch (error) {
+    console.error("Erro detalhado:", error);
     return res.status(500).json({
       status: 0,
-      message: error.message
+      message: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 }
