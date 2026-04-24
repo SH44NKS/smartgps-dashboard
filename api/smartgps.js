@@ -9,7 +9,6 @@ export default async function handler(req, res) {
 
     let apiHash;
 
-    // 🔐 LOGIN AUTOMÁTICO
     const loginForm = new FormData();
     loginForm.append("email", process.env.SMARTGPS_EMAIL);
     loginForm.append("password", process.env.SMARTGPS_PASSWORD);
@@ -31,7 +30,6 @@ export default async function handler(req, res) {
 
     apiHash = loginData.user_api_hash;
 
-    // 👉 Se for só login
     if (action === "login") {
       return res.status(200).json({
         status: 1,
