@@ -233,12 +233,13 @@ export default async function handler(req, res) {
     if (action === 'sync_sheet') {
       const { sheetUrl, data } = body;
       if (!sheetUrl) return send(res, 400, { status: 0, message: 'sheetUrl nao informado.' });
-      await fetch(sheetUrl, {
+      const sheetResponse = await fetch(sheetUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data || {}),
       });
-      return send(res, 200, { status: 1, message: 'Sincronizado com planilha.' });
+      const sheetData = await parseSmartGpsResponse(sheetResponse);
+      return send(res, sheetResponse.ok ? 200 : sheetResponse.status, sheetData);
     }
 
     if (!path) return send(res, 400, { status: 0, message: 'Path nao informado.' });
