@@ -18,6 +18,10 @@ function doPost(e) {
       return sgJson_(sgAddRecord_(payload.type || 'Evento', payload.record || {}));
     }
 
+    if (action === 'get_dashboard') {
+      return sgJson_(sgGetDashboard_());
+    }
+
     return sgJson_({ status: 0, message: 'Acao desconhecida: ' + action });
   } catch (err) {
     return sgJson_({ status: 0, message: err.message || String(err) });
@@ -152,7 +156,18 @@ function sgRouteOperationalRecord_(ss, type, record) {
   if (normalized === 'cancelamento') return sgAppendCancelamento_(ss, record);
   if (normalized === 'suspensao' || normalized === 'suspensão 120 dias') return sgAppendSuspensao_(ss, record);
   if (normalized === 'os' || normalized === 'ordem de serviço' || normalized === 'ordem de servico') return sgAppendOS_(ss, record);
+  if (normalized === 'task' || normalized === 'tarefa') return sgAppendTask_(ss, record);
   return null;
+}
+
+function sgGetDashboard_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('SmartGPS Dashboard') || ss.getSheetByName('Dashboard');
+  if (!sheet) return { status: 1, rows: [] };
+  var lastRow = Math.min(sheet.getLastRow(), 30);
+  var lastCol = Math.min(sheet.getLastColumn(), 5);
+  var rows = lastRow ? sheet.getRange(1, 1, lastRow, lastCol).getDisplayValues() : [];
+  return { status: 1, rows: rows };
 }
 
 function sgAppendCadastroRetirada_(ss, sheetName, record) {
@@ -244,6 +259,22 @@ function sgAppendOS_(ss, record) {
     status: 'Agendado',
     obs: [record.veiculo || record.vehicle_model || '', record.consultor ? 'Consultor: ' + record.consultor : ''].filter(Boolean).join(' | ')
   });
+}
+
+function sgAppendTask_(ss, record) {
+  var sheet = sgSheet_(ss, 'Task List', ['Data','Tarefa','Prioridade','Categoria','Responsavel','Status','Hora','Observacoes']);
+  sheet.appendRow([
+    sgDate_(record.data),
+    record.tarefa || record.title || '',
+    record.prio || record.priority || 'Normal',
+    record.cat || record.categoria || 'Ajuda ai Alisson',
+    record.resp || record.responsavel || '',
+    record.status || 'Pendente',
+    record.hora || '',
+    record.obs || record.observacoes || ''
+  ]);
+  sheet.getRange(sheet.getLastRow(), 1).setNumberFormat('dd/MM/yyyy');
+  return { status: 1, message: 'Task salva na planilha.', sheet: 'Task List' };
 }
 
 function sgDate_(value) {
