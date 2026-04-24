@@ -1,8 +1,7 @@
 {
-  "rewrites": [
-    {
-      "source": "/api/smartgps",
-      "destination": "/api/smartgps.js"
+  "functions": {
+    "api/*.js": {
+      "runtime": "nodejs18.x"
     }
-  ]
+  }
 }
