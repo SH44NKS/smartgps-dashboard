@@ -1481,6 +1481,17 @@ async function doLogin() {
 
 function hasConfig() {
   return true;
+
+function normalizeList(data) {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data.data)) return data.data;
+  if (Array.isArray(data.items)) return data.items;
+  if (Array.isArray(data.devices)) return data.devices;
+  if (Array.isArray(data.clients)) return data.clients;
+  if (Array.isArray(data.orders)) return data.orders;
+  if (Array.isArray(data.technicians)) return data.technicians;
+  if (data.data && typeof data.data === 'object') return Object.values(data.data);
+  return [];
 }
 
 // ==============================
