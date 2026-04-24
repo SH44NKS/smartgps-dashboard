@@ -2,6 +2,7 @@ import fetch from "node-fetch";
 import FormData from "form-data";
 
 const BASE_URL = "https://sp.tracker-net.app";
+const MAX_PAGES = 500; // Aumentado para 500 páginas (500 x 20 = 10.000 itens)
 
 export default async function handler(req, res) {
   // CORS headers
@@ -64,10 +65,8 @@ export default async function handler(req, res) {
       const separator = path.includes("?") ? "&" : "?";
       let url = `${BASE_URL}${path}${separator}user_api_hash=${encodeURIComponent(apiHash)}`;
       
-      // Adicionar página
       url += `&page=${page}`;
       
-      // Parâmetros específicos
       if (path.includes('/api/get_devices_latest')) {
         url += '&time=0';
       }
@@ -89,12 +88,12 @@ export default async function handler(req, res) {
       }
     }
 
-    // Se for para buscar tudo (fetchAll)
+    // Se for para buscar tudo (fetchAll) - OTIMIZADO PARA GRANDES VOLUMES
     if (fetchAll && method === "GET") {
       let allItems = [];
       let currentPage = 1;
       let totalPages = 1;
-      let totalItems = 0;
+      let perPage = 20;
       
       try {
         // Primeira requisição para saber o total
@@ -119,35 +118,60 @@ export default async function handler(req, res) {
         // Verificar se tem paginação
         if (firstPage.last_page && firstPage.last_page > 1) {
           totalPages = firstPage.last_page;
-          totalItems = firstPage.total || allItems.length;
+          perPage = firstPage.per_page || 20;
           
-          // Buscar páginas restantes (limitar a 50 páginas para não sobrecarregar)
-          const maxPages = Math.min(totalPages, 50);
+          // Buscar páginas restantes (agora até 500 páginas)
+          const maxPages = Math.min(totalPages, MAX_PAGES);
           
-          for (let page = 2; page <= maxPages; page++) {
-            const pageData = await fetchPage(page);
+          // Buscar em lotes de 5 páginas simultâneas para acelerar
+          for (let batchStart = 2; batchStart <= maxPages; batchStart += 5) {
+            const batchEnd = Math.min(batchStart + 4, maxPages);
+            const promises = [];
             
-            if (pageData) {
-              let pageItems = [];
-              if (pageData.items && Array.isArray(pageData.items)) {
-                pageItems = pageData.items;
-              } else if (pageData.data && Array.isArray(pageData.data)) {
-                pageItems = pageData.data;
-              } else if (Array.isArray(pageData)) {
-                pageItems = pageData;
+            for (let page = batchStart; page <= batchEnd; page++) {
+              promises.push(fetchPage(page));
+            }
+            
+            const results = await Promise.all(promises);
+            
+            for (const pageData of results) {
+              if (pageData) {
+                let pageItems = [];
+                if (pageData.items && Array.isArray(pageData.items)) {
+                  pageItems = pageData.items;
+                } else if (pageData.data && Array.isArray(pageData.data)) {
+                  pageItems = pageData.data;
+                } else if (Array.isArray(pageData)) {
+                  pageItems = pageData;
+                }
+                
+                allItems = [...allItems, ...pageItems];
               }
-              
-              allItems = [...allItems, ...pageItems];
             }
           }
         }
         
+        // Marcar dispositivos com mais de 45 dias sem comunicação como "Manutenção"
+        const now = new Date();
+        const itemsComManutencao = allItems.map(item => {
+          const lastUpdate = item.time || item.server_time || item.updated_at;
+          if (lastUpdate) {
+            const lastDate = new Date(lastUpdate.replace(' ', 'T'));
+            const daysDiff = Math.floor((now - lastDate) / (1000 * 60 * 60 * 24));
+            if (daysDiff > 45) {
+              return { ...item, maintenance_status: 'manutencao', days_without_communication: daysDiff };
+            }
+          }
+          return item;
+        });
+        
         return res.status(200).json({
           status: 1,
-          items: allItems,
-          total: allItems.length,
-          pages_fetched: Math.min(totalPages, 50),
-          total_pages: totalPages
+          items: itemsComManutencao,
+          total: itemsComManutencao.length,
+          pages_fetched: Math.min(totalPages, MAX_PAGES),
+          total_pages: totalPages,
+          per_page: perPage
         });
         
       } catch (error) {
