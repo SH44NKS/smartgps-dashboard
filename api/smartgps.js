@@ -179,6 +179,18 @@ export default async function handler(req, res) {
       }
     }
 
+    // Dentro do handler, adicione esta ação:
+if (action === "sync_sheet") {
+  const { sheetUrl, data } = body;
+  // Aqui você pode fazer uma requisição HTTP para o Google Apps Script
+  // Exemplo:
+  const syncResponse = await fetch(sheetUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.status(200).json({ status: 1, message: "Sincronizado com planilha" });
+}
     // Comportamento normal (única página)
     const separator = path.includes("?") ? "&" : "?";
     let url = `${BASE_URL}${path}${separator}user_api_hash=${encodeURIComponent(apiHash)}`;
