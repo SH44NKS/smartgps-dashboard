@@ -103,7 +103,7 @@ function extractItems(data) {
   if (Array.isArray(data.clients)) return flattenGroups(data.clients);
   if (Array.isArray(data.orders)) return flattenGroups(data.orders);
   if (Array.isArray(data.technicians)) return flattenGroups(data.technicians);
-  return [];
+  return flattenGroups(findLargestArray_(data));
 }
 
 function flattenGroups(items) {
@@ -111,7 +111,26 @@ function flattenGroups(items) {
 }
 
 function getLastPage(data) {
-  return Number(data?.last_page || data?.items?.last_page || data?.data?.last_page || 1);
+  return Number(findFirstKey_(data, 'last_page') || data?.lastPage || data?.items?.last_page || data?.data?.last_page || 1);
+}
+
+function findLargestArray_(value) {
+  if (!value || typeof value !== 'object') return [];
+  if (Array.isArray(value)) return value;
+  return Object.values(value).reduce((best, child) => {
+    const found = findLargestArray_(child);
+    return found.length > best.length ? found : best;
+  }, []);
+}
+
+function findFirstKey_(value, key) {
+  if (!value || typeof value !== 'object') return null;
+  if (Object.prototype.hasOwnProperty.call(value, key)) return value[key];
+  for (const child of Object.values(value)) {
+    const found = findFirstKey_(child, key);
+    if (found !== null && found !== undefined) return found;
+  }
+  return null;
 }
 
 async function login() {
@@ -170,6 +189,9 @@ async function fetchSmartGps(path, method, body, apiHash, contentType) {
 async function fetchAllPages(path, apiHash) {
   const firstUrl = buildUrl(path, apiHash);
   firstUrl.searchParams.set('page', firstUrl.searchParams.get('page') || '1');
+  if (!firstUrl.searchParams.has('length') && !firstUrl.searchParams.has('limit') && !firstUrl.searchParams.has('per_page')) {
+    firstUrl.searchParams.set('length', '1000');
+  }
 
   const firstResponse = await fetch(firstUrl);
   const firstData = await parseSmartGpsResponse(firstResponse);
@@ -181,11 +203,15 @@ async function fetchAllPages(path, apiHash) {
   const totalPages = getLastPage(firstData);
   const maxPages = Math.min(totalPages, MAX_PAGES);
 
-  for (let batchStart = 2; batchStart <= maxPages; batchStart += 5) {
+  const batchSize = 15;
+  for (let batchStart = 2; batchStart <= maxPages; batchStart += batchSize) {
     const requests = [];
-    for (let page = batchStart; page <= Math.min(batchStart + 4, maxPages); page += 1) {
+    for (let page = batchStart; page <= Math.min(batchStart + batchSize - 1, maxPages); page += 1) {
       const pageUrl = buildUrl(path, apiHash);
       pageUrl.searchParams.set('page', String(page));
+      if (!pageUrl.searchParams.has('length') && !pageUrl.searchParams.has('limit') && !pageUrl.searchParams.has('per_page')) {
+        pageUrl.searchParams.set('length', '1000');
+      }
       requests.push(fetch(pageUrl).then(parseSmartGpsResponse).catch(() => null));
     }
 
