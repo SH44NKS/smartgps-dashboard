@@ -1,5 +1,8 @@
 const DEFAULT_BASE_URL = 'https://sp.tracker-net.app';
 const MAX_PAGES = Number(process.env.SMARTGPS_MAX_PAGES || 500);
+const PAGE_LENGTH = String(process.env.SMARTGPS_PAGE_LENGTH || 1000);
+const PAGE_BATCH_SIZE = Number(process.env.SMARTGPS_PAGE_BATCH_SIZE || 3);
+const PAGE_BATCH_DELAY_MS = Number(process.env.SMARTGPS_PAGE_BATCH_DELAY_MS || 450);
 
 const ROUTE_ALIASES = {
   '/api/admin/clients': '/api/admin/get_clients',
@@ -90,6 +93,30 @@ async function parseSmartGpsResponse(response) {
   } catch {
     return { status: 0, message: 'Resposta nao JSON da SmartGPS', raw: text };
   }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRateLimited(data, response) {
+  const message = String(data?.message || '').toLowerCase();
+  return response?.status === 429 || message.includes('too many') || message.includes('attempts');
+}
+
+async function fetchJsonWithRetry(url, options = {}, retries = 4) {
+  let lastData = null;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    const response = await fetch(url, options);
+    const data = await parseSmartGpsResponse(response);
+    lastData = data;
+    if (!isRateLimited(data, response)) return { response, data };
+    await sleep(900 * (attempt + 1));
+  }
+  const error = new Error(lastData?.message || 'Too Many Attempts');
+  error.statusCode = 429;
+  error.data = lastData;
+  throw error;
 }
 
 function extractItems(data) {
@@ -190,11 +217,10 @@ async function fetchAllPages(path, apiHash) {
   const firstUrl = buildUrl(path, apiHash);
   firstUrl.searchParams.set('page', firstUrl.searchParams.get('page') || '1');
   if (!firstUrl.searchParams.has('length') && !firstUrl.searchParams.has('limit') && !firstUrl.searchParams.has('per_page')) {
-    firstUrl.searchParams.set('length', '1000');
+    firstUrl.searchParams.set('length', PAGE_LENGTH);
   }
 
-  const firstResponse = await fetch(firstUrl);
-  const firstData = await parseSmartGpsResponse(firstResponse);
+  const { response: firstResponse, data: firstData } = await fetchJsonWithRetry(firstUrl);
   if (!firstResponse.ok) {
     return { status: 0, message: 'Erro ao buscar dados', upstreamStatus: firstResponse.status, data: firstData };
   }
@@ -203,22 +229,23 @@ async function fetchAllPages(path, apiHash) {
   const totalPages = getLastPage(firstData);
   const maxPages = Math.min(totalPages, MAX_PAGES);
 
-  const batchSize = 15;
+  const batchSize = Math.max(1, PAGE_BATCH_SIZE);
   for (let batchStart = 2; batchStart <= maxPages; batchStart += batchSize) {
     const requests = [];
     for (let page = batchStart; page <= Math.min(batchStart + batchSize - 1, maxPages); page += 1) {
       const pageUrl = buildUrl(path, apiHash);
       pageUrl.searchParams.set('page', String(page));
       if (!pageUrl.searchParams.has('length') && !pageUrl.searchParams.has('limit') && !pageUrl.searchParams.has('per_page')) {
-        pageUrl.searchParams.set('length', '1000');
+        pageUrl.searchParams.set('length', PAGE_LENGTH);
       }
-      requests.push(fetch(pageUrl).then(parseSmartGpsResponse).catch(() => null));
+      requests.push(fetchJsonWithRetry(pageUrl).then((result) => result.data).catch(() => null));
     }
 
     const pages = await Promise.all(requests);
     pages.forEach((pageData) => {
       allItems = allItems.concat(extractItems(pageData));
     });
+    if (batchStart + batchSize <= maxPages) await sleep(PAGE_BATCH_DELAY_MS);
   }
 
   const now = Date.now();
