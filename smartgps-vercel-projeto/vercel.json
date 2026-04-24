@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/smartgps",
+      "destination": "/api/smartgps.js"
+    }
+  ]
+}
