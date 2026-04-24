@@ -1387,6 +1387,23 @@ async function apiGet(path) {
 
   return r.json();
 }
+  function normalizeList(data) {
+  if (!data) return [];
+
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data.data)) return data.data;
+  if (Array.isArray(data.items)) return data.items;
+  if (Array.isArray(data.devices)) return data.devices;
+  if (Array.isArray(data.clients)) return data.clients;
+  if (Array.isArray(data.orders)) return data.orders;
+  if (Array.isArray(data.technicians)) return data.technicians;
+
+  if (typeof data.data === 'object') {
+    return Object.values(data.data);
+  }
+
+  return [];
+}
 
 async function apiPost(path, formData) {
   const body = {};
@@ -1642,10 +1659,14 @@ let allDevices = [];
 async function loadDevices() {
   if (!hasConfig()) return;
   const el = document.getElementById('devicesList');
+  const list = normalizeList(data);
+
+console.log('DISPOSITIVOS RAW:', data);
+console.log('DISPOSITIVOS NORMALIZADO:', list);
   el.innerHTML = '<div class="loading"><div class="spinner"></div>Carregando dispositivos...</div>';
   try {
     const data = await apiGet('/api/get_devices');
-    allDevices = data?.data || [];
+    allDevices = normalizeList(data); console.log('DISPOSITIVOS:', data, allDevices);
     renderDevices(allDevices);
     showAlert('deviceAlert', `${allDevices.length} dispositivo(s) carregado(s).`, 'success');
   } catch(e) {
@@ -1977,7 +1998,7 @@ async function loadVehicleGroups() {
 // ==============================
 // CLIENTS
 // ==============================
-let allClients = [];
+let allClients = normalizeList(data);
 
 async function loadClients() {
   if (!hasConfig()) return;
