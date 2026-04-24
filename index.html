@@ -79,7 +79,46 @@ async function callBackend(payload){const r=await fetch(getBackendUrl(),{method:
 async function apiGet(path){return callBackend({path,method:'GET'})}async function apiPost(path,formData){return callBackend({path,method:'POST',body:formToObj(formData)})}async function apiPut(path,formData){return callBackend({path,method:'PUT',body:formToObj(formData)})}async function apiDelete(path){return callBackend({path,method:'DELETE'})}
 async function doLogin(){const data=await callBackend({action:'login'});if(data.status===1&&data.user_api_hash){localStorage.setItem('smartgps_cfg',JSON.stringify({baseUrl:'/api/smartgps',apiHash:'backend'}));showToast('✅ Login API OK','success');return true}console.log(data);showToast('❌ Erro no login','error');return false}
 // ========= Dashboard =========
-async function loadDashboard(){showToast('🔄 Carregando...','info');const [dev,cli,ord,tec]=await Promise.allSettled([apiGet('/api/get_devices'),apiGet('/api/admin/clients'),apiGet('/api/get_orders'),apiGet('/api/technicians')]);allDevices=dev.status==='fulfilled'?normalizeList(dev.value):[];allClients=cli.status==='fulfilled'?normalizeList(cli.value):[];allOrders=ord.status==='fulfilled'?normalizeList(ord.value):[];allTechnicians=tec.status==='fulfilled'?normalizeList(tec.value):[];document.getElementById('statDevices').textContent=allDevices.length;document.getElementById('statClients').textContent=allClients.length;document.getElementById('statOrders').textContent=allOrders.length;document.getElementById('statTechs').textContent=allTechnicians.length;document.getElementById('statStock').textContent=getStock().length;fillTechnicianSelect();showToast('✅ Dashboard atualizado','success')}
+async function async function loadDashboard() {
+  showToast('🔄 Carregando dados...', 'info');
+  
+  try {
+    const [dev, cli, ord, tec] = await Promise.allSettled([
+      apiGet('/api/devices'),           // Dispositivos
+      apiGet('/api/admin/clients'),     // Clientes
+      apiGet('/api/orders'),            // Pedidos
+      apiGet('/api/technicians')        // Técnicos
+    ]);
+    
+    allDevices = dev.status === 'fulfilled' && dev.value.status === 1 ? 
+      normalizeList(dev.value) : [];
+    allClients = cli.status === 'fulfilled' && cli.value.status === 1 ? 
+      normalizeList(cli.value) : [];
+    allOrders = ord.status === 'fulfilled' && ord.value.status === 1 ? 
+      normalizeList(ord.value) : [];
+    allTechnicians = tec.status === 'fulfilled' && tec.value.status === 1 ? 
+      normalizeList(tec.value) : [];
+    
+    console.log('Dados carregados:', {
+      devices: allDevices.length,
+      clients: allClients.length,
+      orders: allOrders.length,
+      technicians: allTechnicians.length
+    });
+    
+    document.getElementById('statDevices').textContent = allDevices.length;
+    document.getElementById('statClients').textContent = allClients.length;
+    document.getElementById('statOrders').textContent = allOrders.length;
+    document.getElementById('statTechs').textContent = allTechnicians.length;
+    document.getElementById('statStock').textContent = getStock().length;
+    
+    fillTechnicianSelect();
+    showToast('✅ Painel atualizado', 'success');
+  } catch (error) {
+    console.error('Erro ao carregar dashboard:', error);
+    showToast('❌ Erro ao carregar dados', 'error');
+  }
+}
 function renderReports(){document.getElementById('relDevices').textContent=allDevices.length;document.getElementById('relClients').textContent=allClients.length;document.getElementById('relOrders').textContent=allOrders.length;document.getElementById('relStock').textContent=getStock().length}
 // ========= Devices =========
 async function loadDevices(){const el=document.getElementById('devicesList');el.innerHTML='<div class="loading"><div class="spinner"></div>Carregando dispositivos...</div>';try{const data=await apiGet('/api/get_devices');console.log('DISPOSITIVOS RAW:',data);allDevices=normalizeList(data);console.log('DISPOSITIVOS NORMALIZADO:',allDevices);renderDevices(allDevices);showAlert('deviceAlert',`${allDevices.length} dispositivo(s) carregado(s).`,'success')}catch(e){el.innerHTML='<div class="empty">Erro ao carregar dispositivos.</div>';showAlert('deviceAlert','Erro: '+e.message,'error')}}
