@@ -1371,8 +1371,112 @@ function openConfig() {
   openModal('configModal');
 }
 
-function apiUrl(path) {
-  return path;
+function getBackendUrl() {
+  return '/api/smartgps';
+}
+
+async function apiGet(path) {
+  const r = await fetch(getBackendUrl(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      path: path,
+      method: 'GET'
+    })
+  });
+
+  return r.json();
+}
+
+async function apiPost(path, formData) {
+  const body = {};
+
+  if (formData instanceof FormData) {
+    for (const [key, value] of formData.entries()) {
+      body[key] = value;
+    }
+  } else {
+    Object.assign(body, formData || {});
+  }
+
+  const r = await fetch(getBackendUrl(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      path: path,
+      method: 'POST',
+      body: body
+    })
+  });
+
+  return r.json();
+}
+
+async function apiPut(path, formData) {
+  const body = {};
+
+  if (formData instanceof FormData) {
+    for (const [key, value] of formData.entries()) {
+      body[key] = value;
+    }
+  } else {
+    Object.assign(body, formData || {});
+  }
+
+  const r = await fetch(getBackendUrl(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      path: path,
+      method: 'PUT',
+      body: body
+    })
+  });
+
+  return r.json();
+}
+
+async function apiDelete(path) {
+  const r = await fetch(getBackendUrl(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      path: path,
+      method: 'DELETE'
+    })
+  });
+
+  return r.json();
+}
+
+async function doLogin() {
+  const response = await fetch(getBackendUrl(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'login'
+    })
+  });
+
+  const data = await response.json();
+
+  if (data.status === 1 && data.user_api_hash) {
+    localStorage.setItem('smartgps_cfg', JSON.stringify({
+      baseUrl: '/api/smartgps',
+      apiHash: 'backend'
+    }));
+
+    cfg = {
+      baseUrl: '/api/smartgps',
+      apiHash: 'backend'
+    };
+
+    showToast('✅ Login realizado pelo backend!', 'success');
+    loadDashboard();
+  } else {
+    console.log(data);
+    showToast('❌ Erro no login', 'error');
+  }
 }
 
 function hasConfig() {
