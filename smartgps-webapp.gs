@@ -22,6 +22,10 @@ function doPost(e) {
       return sgJson_(sgGetDashboard_());
     }
 
+    if (action === 'get_operational_records') {
+      return sgJson_(sgGetOperationalRecords_());
+    }
+
     return sgJson_({ status: 0, message: 'Acao desconhecida: ' + action });
   } catch (err) {
     return sgJson_({ status: 0, message: err.message || String(err) });
@@ -168,6 +172,73 @@ function sgGetDashboard_() {
   var lastCol = Math.min(sheet.getLastColumn(), 5);
   var rows = lastRow ? sheet.getRange(1, 1, lastRow, lastCol).getDisplayValues() : [];
   return { status: 1, rows: rows };
+}
+
+function sgGetOperationalRecords_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var configs = [
+    { type: 'Cadastro', names: ['Cadastro'] },
+    { type: 'Retirada', names: ['Retirada'] },
+    { type: 'Cancelamento', names: ['Cancelamento'] },
+    { type: 'Suspensao', names: ['Suspensão 120 dias', 'Suspensao 120 dias', 'SuspensÃ£o 120 dias'] }
+  ];
+  var records = [];
+  var summary = { total: 0, byType: {}, byMonth: {} };
+  configs.forEach(function(config) {
+    var sheet = sgFirstSheet_(ss, config.names);
+    if (!sheet || sheet.getLastRow() < 2) {
+      summary.byType[config.type] = 0;
+      return;
+    }
+    var values = sheet.getRange(1, 1, sheet.getLastRow(), sheet.getLastColumn()).getDisplayValues();
+    var headers = values.shift();
+    summary.byType[config.type] = values.length;
+    values.forEach(function(row) {
+      var record = { tipo: config.type, sheet: sheet.getName(), values: {} };
+      headers.forEach(function(header, index) {
+        record.values[header || ('Coluna ' + (index + 1))] = row[index] || '';
+      });
+      record.data = sgPickDateDisplay_(headers, row);
+      records.push(record);
+      summary.total++;
+      var month = sgMonthKey_(record.data);
+      if (month) {
+        if (!summary.byMonth[month]) summary.byMonth[month] = {};
+        summary.byMonth[month][config.type] = (summary.byMonth[month][config.type] || 0) + 1;
+      }
+    });
+  });
+  return { status: 1, records: records, summary: summary };
+}
+
+function sgFirstSheet_(ss, names) {
+  for (var i = 0; i < names.length; i++) {
+    var sheet = ss.getSheetByName(names[i]);
+    if (sheet) return sheet;
+  }
+  return null;
+}
+
+function sgPickDateDisplay_(headers, row) {
+  for (var i = 0; i < headers.length; i++) {
+    var header = String(headers[i] || '').toLowerCase();
+    if (header.indexOf('data') >= 0 || header.indexOf('conexao') >= 0 || header.indexOf('conex') >= 0) {
+      if (row[i]) return row[i];
+    }
+  }
+  return row[0] || '';
+}
+
+function sgMonthKey_(value) {
+  if (!value) return '';
+  var text = String(value);
+  var match = text.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (match) return match[3] + '-' + ('0' + match[2]).slice(-2);
+  match = text.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (match) return match[1] + '-' + ('0' + match[2]).slice(-2);
+  var parsed = new Date(text);
+  if (!isNaN(parsed.getTime())) return parsed.getFullYear() + '-' + ('0' + (parsed.getMonth() + 1)).slice(-2);
+  return '';
 }
 
 function sgAppendCadastroRetirada_(ss, sheetName, record) {
