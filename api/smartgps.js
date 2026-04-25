@@ -1,11 +1,13 @@
 const DEFAULT_BASE_URL = 'https://sp.tracker-net.app';
 const MAX_PAGES = Number(process.env.SMARTGPS_MAX_PAGES || 500);
-const PAGE_LENGTH = String(process.env.SMARTGPS_PAGE_LENGTH || 1000);
-const PAGE_BATCH_SIZE = Number(process.env.SMARTGPS_PAGE_BATCH_SIZE || 3);
-const PAGE_BATCH_DELAY_MS = Number(process.env.SMARTGPS_PAGE_BATCH_DELAY_MS || 450);
+const PAGE_LENGTH = String(process.env.SMARTGPS_PAGE_LENGTH || 500);
+const PAGE_BATCH_SIZE = Number(process.env.SMARTGPS_PAGE_BATCH_SIZE || 2);
+const PAGE_BATCH_DELAY_MS = Number(process.env.SMARTGPS_PAGE_BATCH_DELAY_MS || 800);
 
 const ROUTE_ALIASES = {
   '/api/admin/clients': '/api/admin/get_clients',
+  '/api/devices': '/api/get_devices',
+  '/api/device': '/api/get_devices',
   '/api/get_technicians': '/api/admin/technicians',
   '/api/technicians': '/api/admin/technicians',
   '/api/schedules': '/api/admin/technicians/appointments',
@@ -137,8 +139,13 @@ function flattenGroups(items) {
   return items.flatMap((item) => Array.isArray(item?.items) ? item.items : item);
 }
 
-function getLastPage(data) {
-  return Number(findFirstKey_(data, 'last_page') || data?.lastPage || data?.items?.last_page || data?.data?.last_page || 1);
+function getLastPage(data, firstPageCount = 0) {
+  const explicit = Number(findFirstKey_(data, 'last_page') || findFirstKey_(data, 'lastPage') || findFirstKey_(data, 'pages') || 0);
+  if (explicit > 0) return explicit;
+  const total = Number(findFirstKey_(data, 'total') || findFirstKey_(data, 'recordsTotal') || findFirstKey_(data, 'count') || 0);
+  const perPage = Number(findFirstKey_(data, 'per_page') || findFirstKey_(data, 'perPage') || findFirstKey_(data, 'length') || PAGE_LENGTH);
+  if (total > 0 && perPage > 0) return Math.ceil(total / perPage);
+  return firstPageCount >= Number(PAGE_LENGTH) ? MAX_PAGES : 1;
 }
 
 function findLargestArray_(value) {
@@ -226,7 +233,7 @@ async function fetchAllPages(path, apiHash) {
   }
 
   let allItems = extractItems(firstData);
-  const totalPages = getLastPage(firstData);
+  const totalPages = getLastPage(firstData, allItems.length);
   const maxPages = Math.min(totalPages, MAX_PAGES);
 
   const batchSize = Math.max(1, PAGE_BATCH_SIZE);
@@ -242,9 +249,9 @@ async function fetchAllPages(path, apiHash) {
     }
 
     const pages = await Promise.all(requests);
-    pages.forEach((pageData) => {
-      allItems = allItems.concat(extractItems(pageData));
-    });
+    const batchItems = pages.flatMap((pageData) => extractItems(pageData));
+    if (!batchItems.length && totalPages === MAX_PAGES) break;
+    allItems = allItems.concat(batchItems);
     if (batchStart + batchSize <= maxPages) await sleep(PAGE_BATCH_DELAY_MS);
   }
 
