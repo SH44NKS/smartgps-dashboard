@@ -77,6 +77,9 @@ function escapeHtml(v){return String(v??'').replace(/[&<>'"]/g,s=>({'&':'&amp;',
 function pick(o,keys,fallback='—'){for(const k of keys){const value=String(k).split('.').reduce((acc,part)=>acc&&acc[part],o);if(value!==undefined&&value!==null&&value!=='' )return value}return fallback}
 function flattenGroups(list){return list.flatMap(item=>Array.isArray(item?.items)?item.items:item)}
 function normalizeList(data){if(!data)return[];if(Array.isArray(data))return flattenGroups(data);if(data.items&&data.items.data&&Array.isArray(data.items.data))return flattenGroups(data.items.data);if(data.data&&data.data.data&&Array.isArray(data.data.data))return flattenGroups(data.data.data);if(data.items&&Array.isArray(data.items))return flattenGroups(data.items);if(data.data&&Array.isArray(data.data))return flattenGroups(data.data);if(Array.isArray(data.devices))return flattenGroups(data.devices);if(Array.isArray(data.clients))return flattenGroups(data.clients);if(Array.isArray(data.orders))return flattenGroups(data.orders);if(Array.isArray(data.technicians))return flattenGroups(data.technicians);if(data.data&&typeof data.data==='object'&&!Array.isArray(data.data))return flattenGroups(Object.values(data.data));if(data.items&&typeof data.items==='object'&&!Array.isArray(data.items))return flattenGroups(Object.values(data.items));const arrays=Object.values(data).filter(v=>Array.isArray(v));return arrays.length>0?flattenGroups(arrays[0]):[];}
+function findFirstKey(value,key){if(!value||typeof value!=='object')return null;if(Object.prototype.hasOwnProperty.call(value,key))return value[key];for(const child of Object.values(value)){const found=findFirstKey(child,key);if(found!==null&&found!==undefined)return found}return null}
+function getLastPageFromResponse(data,firstPageCount=0,pageLength=500){const explicit=Number(findFirstKey(data,'last_page')||findFirstKey(data,'lastPage')||findFirstKey(data,'pages')||0);if(explicit>0)return explicit;const total=Number(findFirstKey(data,'total')||findFirstKey(data,'recordsTotal')||findFirstKey(data,'count')||0);const perPage=Number(findFirstKey(data,'per_page')||findFirstKey(data,'perPage')||findFirstKey(data,'length')||pageLength);if(total>0&&perPage>0)return Math.ceil(total/perPage);return firstPageCount>=pageLength?500:1}
+function withPageParams(path,page,length=500){const sep=String(path).includes('?')?'&':'?';return `${path}${sep}page=${page}&length=${length}`}
 function isPendingOrder(o){const s=String(pick(o,['status','order_status','status_name','situation'],'')).toLowerCase();return !s||s.includes('agend')||s.includes('pend')||s.includes('abert')||s.includes('andamento')||s.includes('confirm')}
 function fd(obj){const f=new FormData();Object.entries(obj).forEach(([k,v])=>{if(v!==undefined&&v!==null&&v!=='')f.append(k,v)});return f}
 function formToObj(formData){const body={};if(formData instanceof FormData){for(const [k,v]of formData.entries())body[k]=v}else Object.assign(body,formData||{});return body}
@@ -158,7 +161,33 @@ showToast('✅ Planilha sincronizada!','success');loadSheetDashboard();
 }
 
 // ========= Devices =========
-async function loadDevicesData(){const primary=normalizeList(await apiGet('/api/get_devices',true));setProgress(`Rota /api/get_devices: ${primary.length}. Combinando com últimos status...`,42);const latest=normalizeList(await apiGet('/api/get_devices_latest',true));return mergeByIdentity(primary,latest)}
+async function loadPagedDevices(path,label,startPct,endPct){
+const pageLength=500;
+let all=[];
+const first=await apiGet(withPageParams(path,1,pageLength),false);
+const firstItems=normalizeList(first);
+all=all.concat(firstItems);
+const totalPages=getLastPageFromResponse(first,firstItems.length,pageLength);
+let remaining=Math.max(totalPages-1,0);
+setProgress(`${label}: ${all.length} encontrados. Pagina 1 de ${totalPages}. Faltam ${remaining} pagina(s).`,startPct);
+for(let page=2;page<=totalPages;page++){
+const data=await apiGet(withPageParams(path,page,pageLength),false);
+const items=normalizeList(data);
+all=all.concat(items);
+remaining=Math.max(totalPages-page,0);
+const pct=startPct+((endPct-startPct)*page/Math.max(totalPages,1));
+setProgress(`${label}: ${all.length} encontrados. Pagina ${page} de ${totalPages}. Faltam ${remaining} pagina(s).`,pct);
+if(!items.length&&totalPages>=500)break;
+}
+return all;
+}
+async function loadDevicesData(){
+const primary=await loadPagedDevices('/api/get_devices','Dispositivos',12,58);
+setProgress(`Dispositivos: ${primary.length} encontrados. Buscando ultimos status...`,62);
+const latest=await loadPagedDevices('/api/get_devices_latest','Status dos dispositivos',62,78);
+setProgress(`Combinando ${primary.length} dispositivos com ${latest.length} status...`,80);
+return mergeByIdentity(primary,latest)
+}
 async function loadDevices(){const el=document.getElementById('devicesList');el.innerHTML='<div class="loading"><div class="spinner"></div>Carregando TODOS em lotes...</div>';setProgress('Carregando todos os dispositivos em lotes...',12);try{allDevices=await loadDevicesData();setProgress(`Renderizando ${allDevices.length} dispositivos...`,82);renderDevices(allDevices);saveDashboardCache();updateDashboardStats();const maint=getMaintenanceDevices();showAlert('deviceAlert',`${allDevices.length} dispositivos (${maint.length} em manutencao +45d)`,'success');finishProgress('Dispositivos carregados')}catch(e){console.error(e);el.innerHTML='<div class="empty">Erro ao carregar dispositivos.</div>';finishProgress('Erro ao carregar');}}
 function getFilteredDevices(){const tokens=document.getElementById('deviceSearch').value.toLowerCase().split(/[\s,;]+/).map(t=>t.trim()).filter(Boolean);if(!tokens.length)return allDevices;return allDevices.filter(d=>{const text=JSON.stringify(d).toLowerCase();return tokens.some(t=>text.includes(t))})}
 function filterDevices(){renderDevices(getFilteredDevices())}
