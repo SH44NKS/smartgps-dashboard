@@ -89,11 +89,21 @@ function toFormData(body = {}) {
 }
 
 async function parseSmartGpsResponse(response) {
+  return parseJsonResponse(response, 'SmartGPS');
+}
+
+async function parseJsonResponse(response, source = 'servico') {
   const text = await response.text();
   try {
     return text ? JSON.parse(text) : {};
   } catch {
-    return { status: 0, message: 'Resposta nao JSON da SmartGPS', raw: text };
+    return {
+      status: 0,
+      message: `Resposta nao JSON da ${source}`,
+      upstreamStatus: response.status,
+      contentType: response.headers.get('content-type') || '',
+      raw: text.slice(0, 500),
+    };
   }
 }
 
@@ -298,7 +308,7 @@ export default async function handler(req, res) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data || {}),
       });
-      const sheetData = await parseSmartGpsResponse(sheetResponse);
+      const sheetData = await parseJsonResponse(sheetResponse, 'planilha');
       return send(res, sheetResponse.ok ? 200 : sheetResponse.status, sheetData);
     }
 

@@ -163,7 +163,7 @@ const maintenance=getMaintenanceDevices().map(d=>d.imei||d.device_data?.imei||''
 const ordersData=allOrders.map(o=>({id:o.id||o.order_id||'',client:o.client_name||o.name||'',plate:o.plate_number||o.plate||'',service:o.type_order||o.service||'',status:o.status||o.order_status||'',date:o.date||o.created_at||''}));
 const result=await sendToSheet('sync_dashboard',{devices:devicesData,maintenance:maintenance,orders:ordersData,stock:getStock(),clients:allClients.length,technicians:allTechnicians.length,timestamp:new Date().toISOString()});
 if(!result)return;
-showToast('✅ Planilha sincronizada!','success');loadSheetDashboard();loadOperationalSheet();
+showToast('✅ Planilha sincronizada!','success');await loadSheetDashboard();await loadOperationalSheet();
 }catch(e){showToast('❌ Erro: '+e.message,'error');}
 }
 
