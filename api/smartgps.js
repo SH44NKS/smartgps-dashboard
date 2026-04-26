@@ -1,5 +1,5 @@
 const DEFAULT_BASE_URL = 'https://sp.tracker-net.app';
-const MAX_PAGES = Number(process.env.SMARTGPS_MAX_PAGES || 25);
+const MAX_PAGES = Number(process.env.SMARTGPS_MAX_PAGES || 500);
 const PAGE_LENGTH = String(process.env.SMARTGPS_PAGE_LENGTH || 500);
 const PAGE_BATCH_SIZE = Number(process.env.SMARTGPS_PAGE_BATCH_SIZE || 2);
 const PAGE_BATCH_DELAY_MS = Number(process.env.SMARTGPS_PAGE_BATCH_DELAY_MS || 800);
