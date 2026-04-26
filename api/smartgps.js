@@ -1,5 +1,5 @@
 const DEFAULT_BASE_URL = 'https://sp.tracker-net.app';
-const MAX_PAGES = Number(process.env.SMARTGPS_MAX_PAGES || 500);
+const MAX_PAGES = Number(process.env.SMARTGPS_MAX_PAGES || 25);
 const PAGE_LENGTH = String(process.env.SMARTGPS_PAGE_LENGTH || 500);
 const PAGE_BATCH_SIZE = Number(process.env.SMARTGPS_PAGE_BATCH_SIZE || 2);
 const PAGE_BATCH_DELAY_MS = Number(process.env.SMARTGPS_PAGE_BATCH_DELAY_MS || 800);
@@ -155,7 +155,7 @@ function getLastPage(data, firstPageCount = 0) {
   const total = Number(findFirstKey_(data, 'total') || findFirstKey_(data, 'recordsTotal') || findFirstKey_(data, 'count') || 0);
   const perPage = Number(findFirstKey_(data, 'per_page') || findFirstKey_(data, 'perPage') || findFirstKey_(data, 'length') || PAGE_LENGTH);
   if (total > 0 && perPage > 0) return Math.ceil(total / perPage);
-  return firstPageCount >= Number(PAGE_LENGTH) ? MAX_PAGES : 1;
+  return 1;
 }
 
 function findLargestArray_(value) {
