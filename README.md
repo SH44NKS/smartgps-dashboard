@@ -24,7 +24,7 @@ Use preferencialmente um hash novo. Nunca coloque hash, login ou senha no `index
 
 - Busca dispositivos e status em multiplas paginas.
 - Corrige respostas agrupadas da SmartGPS, como `items.data[].items[]`.
-- Consulta clientes, pedidos e tecnicos.
+- Consulta pedidos, agendamentos e tecnicos.
 - Mantem estoque interno no navegador para movimentar rastreadores entre estoque, tecnico, instalado, removido e defeito.
 - Centraliza a comunicacao com a SmartGPS em `/api/smartgps`, sem expor segredos no browser.
 
