@@ -18,6 +18,13 @@ SMARTGPS_EMAIL=seu_email
 SMARTGPS_PASSWORD=sua_senha
 ```
 
+Para a integracao Movit/STC, configure tambem:
+
+```txt
+MOVIT_BASE_URL=http://ap3.stc.srv.br/integration/prod/
+MOVIT_API_KEY=sua_chave_de_integracao
+```
+
 Use preferencialmente um hash novo. Nunca coloque hash, login ou senha no `index.html`, no README ou em commits.
 
 ## O Que O Painel Faz
@@ -27,6 +34,9 @@ Use preferencialmente um hash novo. Nunca coloque hash, login ou senha no `index
 - Consulta clientes, pedidos e tecnicos.
 - Mantem estoque interno no navegador para movimentar rastreadores entre estoque, tecnico, instalado, removido e defeito.
 - Centraliza a comunicacao com a SmartGPS em `/api/smartgps`, sem expor segredos no browser.
+- Separa a area atual como Tracker-net e adiciona a area Movit em `/api/movit`.
+- Na Movit, lista clientes, veiculos, dispositivos, gerenciadores e ultimas 500 posicoes.
+- Permite criar cliente, veiculo e dispositivo Movit pelo painel.
 
 ## Integracao Com Google Sheets
 
