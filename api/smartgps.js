@@ -1,8 +1,14 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+
 const DEFAULT_BASE_URL = 'https://sp.tracker-net.app';
 const MAX_PAGES = Number(process.env.SMARTGPS_MAX_PAGES || 500);
 const PAGE_LENGTH = String(process.env.SMARTGPS_PAGE_LENGTH || 500);
 const PAGE_BATCH_SIZE = Number(process.env.SMARTGPS_PAGE_BATCH_SIZE || 2);
 const PAGE_BATCH_DELAY_MS = Number(process.env.SMARTGPS_PAGE_BATCH_DELAY_MS || 800);
+const LINKS_DEFAULT_REPO = 'SH44NKS/smartgps-dashboard';
+const LINKS_DEFAULT_BRANCH = 'main';
+const LINKS_DEFAULT_FILE = 'data/links.json';
 
 const ROUTE_ALIASES = {
   '/api/admin/clients': '/api/admin/get_clients',
@@ -43,6 +49,106 @@ const ALLOWED_PREFIXES = [
 
 function send(res, statusCode, payload) {
   res.status(statusCode).json(payload);
+}
+
+function linksConfig() {
+  return {
+    token: process.env.LINKS_GITHUB_TOKEN || process.env.GITHUB_TOKEN || '',
+    repo: process.env.LINKS_GITHUB_REPO || process.env.GITHUB_REPO || LINKS_DEFAULT_REPO,
+    branch: process.env.LINKS_GITHUB_BRANCH || process.env.GITHUB_BRANCH || LINKS_DEFAULT_BRANCH,
+    filePath: process.env.LINKS_FILE_PATH || LINKS_DEFAULT_FILE,
+  };
+}
+
+function normalizeLink(link = {}) {
+  const title = String(link.title || link.nome || link.name || '').trim();
+  let url = String(link.url || link.link || '').trim();
+  if (url && !/^https?:\/\//i.test(url)) url = `https://${url}`;
+  return {
+    id: link.id || Date.now(),
+    title,
+    url,
+    category: String(link.category || link.categoria || '').trim(),
+    obs: String(link.obs || link.observacao || link.observacoes || '').trim(),
+    createdAt: link.createdAt || new Date().toISOString(),
+  };
+}
+
+function mergeLinks(existing = [], incoming = []) {
+  const map = new Map();
+  [...existing, ...incoming].map(normalizeLink).filter((l) => l.title && l.url).forEach((link) => {
+    map.set(`${link.url}|${link.title}`.toLowerCase(), { ...(map.get(`${link.url}|${link.title}`.toLowerCase()) || {}), ...link });
+  });
+  return [...map.values()].sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+}
+
+async function readBundledLinks(filePath) {
+  try {
+    return JSON.parse(await fs.readFile(path.join(process.cwd(), filePath), 'utf8'));
+  } catch {
+    return [];
+  }
+}
+
+async function githubLinksRequest(url, options = {}) {
+  const { token } = linksConfig();
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    },
+  });
+  const data = await response.json().catch(() => ({}));
+  return { response, data };
+}
+
+async function getGithubLinksFile() {
+  const { repo, branch, filePath } = linksConfig();
+  const url = `https://api.github.com/repos/${repo}/contents/${encodeURIComponent(filePath).replace(/%2F/g, '/')}?ref=${encodeURIComponent(branch)}`;
+  const { response, data } = await githubLinksRequest(url);
+  if (!response.ok) return { links: await readBundledLinks(filePath), sha: null, source: 'bundle' };
+  return {
+    links: JSON.parse(Buffer.from(data.content || '', 'base64').toString('utf8') || '[]'),
+    sha: data.sha,
+    source: 'github',
+  };
+}
+
+async function writeGithubLinksFile(links, sha) {
+  const { repo, branch, filePath } = linksConfig();
+  const url = `https://api.github.com/repos/${repo}/contents/${encodeURIComponent(filePath).replace(/%2F/g, '/')}`;
+  const body = {
+    message: 'Update saved dashboard links',
+    branch,
+    content: Buffer.from(JSON.stringify(links, null, 2) + '\n', 'utf8').toString('base64'),
+    ...(sha ? { sha } : {}),
+  };
+  const { response, data } = await githubLinksRequest(url, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) return { status: 0, message: data.message || 'Erro ao salvar links no GitHub' };
+  return { status: 1, message: 'Links salvos no GitHub.', commit: data.commit?.sha };
+}
+
+async function handleLegacyLinksAction(data = {}) {
+  if (data.action === 'get_links') {
+    const file = await getGithubLinksFile();
+    return { status: 1, links: mergeLinks(file.links), source: file.source };
+  }
+  if (data.action === 'add_record' && String(data.type || '').toLowerCase() === 'link') {
+    const { token } = linksConfig();
+    if (!token) return { status: 0, message: 'Configure LINKS_GITHUB_TOKEN no Vercel para salvar links no GitHub.' };
+    const file = await getGithubLinksFile();
+    const links = mergeLinks(file.links, [data.record || {}]);
+    const saved = await writeGithubLinksFile(links, file.sha);
+    return { ...saved, links, total: links.length };
+  }
+  return null;
 }
 
 function normalizePath(path = '') {
@@ -301,6 +407,8 @@ export default async function handler(req, res) {
     }
 
     if (action === 'sync_sheet') {
+      const legacyLinks = await handleLegacyLinksAction(body?.data || {});
+      if (legacyLinks) return send(res, legacyLinks.status ? 200 : 500, legacyLinks);
       const { sheetUrl, data } = body;
       if (!sheetUrl) return send(res, 400, { status: 0, message: 'sheetUrl nao informado.' });
       const sheetResponse = await fetch(sheetUrl, {
