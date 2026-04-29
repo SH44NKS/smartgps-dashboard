@@ -20,6 +20,19 @@ SMARTGPS_PASSWORD=sua_senha
 
 Use preferencialmente um hash novo. Nunca coloque hash, login ou senha no `index.html`, no README ou em commits.
 
+## Links Salvos No GitHub
+
+A tela `Gestao > Links` le o arquivo `data/links.json`. Para tambem salvar novos links direto pelo painel, configure na Vercel:
+
+```txt
+LINKS_GITHUB_TOKEN=token_do_github_com_contents_read_write
+LINKS_GITHUB_REPO=SH44NKS/smartgps-dashboard
+LINKS_GITHUB_BRANCH=main
+LINKS_FILE_PATH=data/links.json
+```
+
+Use um Fine-grained personal access token limitado a este repositorio com permissao `Contents: Read and write`.
+
 ## O Que O Painel Faz
 
 - Busca dispositivos e status em multiplas paginas.
