@@ -22,6 +22,10 @@ function doPost(e) {
       return sgJson_(sgGetDashboard_());
     }
 
+    if (action === 'get_links') {
+      return sgJson_(sgGetLinks_());
+    }
+
     return sgJson_({ status: 0, message: 'Acao desconhecida: ' + action });
   } catch (err) {
     return sgJson_({ status: 0, message: err.message || String(err) });
@@ -157,6 +161,7 @@ function sgRouteOperationalRecord_(ss, type, record) {
   if (normalized === 'suspensao' || normalized === 'suspensão 120 dias') return sgAppendSuspensao_(ss, record);
   if (normalized === 'os' || normalized === 'ordem de serviço' || normalized === 'ordem de servico') return sgAppendOS_(ss, record);
   if (normalized === 'task' || normalized === 'tarefa') return sgAppendTask_(ss, record);
+  if (normalized === 'link' || normalized === 'links') return sgAppendLink_(ss, record);
   return null;
 }
 
@@ -275,6 +280,43 @@ function sgAppendTask_(ss, record) {
   ]);
   sheet.getRange(sheet.getLastRow(), 1).setNumberFormat('dd/MM/yyyy');
   return { status: 1, message: 'Task salva na planilha.', sheet: 'Task List' };
+}
+
+function sgAppendLink_(ss, record) {
+  var sheet = sgSheet_(ss, 'Links', ['Data','Nome','URL','Categoria','Observacao']);
+  var title = record.title || record.nome || record.name || '';
+  var url = record.url || record.link || '';
+  if (!title || !url) return { status: 0, message: 'Nome e URL do link sao obrigatorios.' };
+  var existing = sheet.getLastRow() > 1 ? sheet.getRange(2, 2, sheet.getLastRow() - 1, 2).getValues() : [];
+  var key = String(title + '|' + url).toLowerCase();
+  for (var i = 0; i < existing.length; i++) {
+    if (String(existing[i][0] + '|' + existing[i][1]).toLowerCase() === key) {
+      return { status: 1, message: 'Link ja existia na planilha.', sheet: 'Links' };
+    }
+  }
+  sheet.appendRow([
+    sgDate_(record.createdAt || record.data),
+    title,
+    url,
+    record.category || record.categoria || '',
+    record.obs || record.observacao || record.observacoes || ''
+  ]);
+  sheet.getRange(sheet.getLastRow(), 1).setNumberFormat('dd/MM/yyyy HH:mm');
+  return { status: 1, message: 'Link salvo na planilha.', sheet: 'Links' };
+}
+
+function sgGetLinks_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = sgSheet_(ss, 'Links', ['Data','Nome','URL','Categoria','Observacao']);
+  var last = sheet.getLastRow();
+  if (last < 2) return { status: 1, links: [] };
+  var values = sheet.getRange(2, 1, last - 1, 5).getDisplayValues();
+  var links = values
+    .filter(function (r) { return r[1] || r[2]; })
+    .map(function (r, i) {
+      return { id: 'sheet-' + (i + 2), data: r[0], title: r[1], url: r[2], category: r[3], obs: r[4] };
+    });
+  return { status: 1, links: links };
 }
 
 function sgDate_(value) {
