@@ -240,8 +240,8 @@ function renderTasks(){const tasks=getTasks();tasksList.innerHTML=tasks.length?`
 function renderDashboardTasks(){const list=getTodayTasks();if(!document.getElementById('dashboardTasks'))return;dashboardTasks.innerHTML=list.length?`<div class="table-wrap"><table><tbody>${list.slice(0,8).map(t=>`<tr><td>${taskTag(t.priority)}</td><td><strong>${escapeHtml(t.title)}</strong><br><span class="mono">${escapeHtml(t.date||'Hoje')}</span></td><td>${escapeHtml(t.status)}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">Nada urgente para hoje.</div>'}
 function taskTag(p){const c=p==='Urgente'?'tag-red':p==='Alta'?'tag-orange':p==='Normal'?'tag-blue':'tag-gray';return`<span class="tag ${c}">${escapeHtml(p)}</span>`}
 const fixedLinks=[
-{id:'fixed-crm-foco',title:'CRM FOCO',url:'https://app.powercrm.com.br/internal/changeCompany',category:'CRM',obs:'Atalho fixo. Mesmo endereço do CRM ESCUDO; se usar dois logins, a sessão pode compartilhar cookies.',source:'Fixo'},
-{id:'fixed-crm-escudo',title:'CRM ESCUDO',url:'https://app.powercrm.com.br/internal/changeCompany',category:'CRM',obs:'Atalho fixo. Mesmo endereço do CRM FOCO; se usar dois logins, a sessão pode compartilhar cookies.',source:'Fixo'},
+{id:'fixed-crm-foco',title:'CRM FOCO',url:'https://app.powercrm.com.br/',category:'CRM',obs:'Atalho fixo. Mesmo endereço do CRM ESCUDO; se usar dois logins, a sessão pode compartilhar cookies.',source:'Fixo'},
+{id:'fixed-crm-escudo',title:'CRM ESCUDO',url:'https://app.powercrm.com.br/',category:'CRM',obs:'Atalho fixo. Mesmo endereço do CRM FOCO; se usar dois logins, a sessão pode compartilhar cookies.',source:'Fixo'},
 {id:'fixed-tracker-os',title:'TRACKER OS',url:'https://sp.tracker-net.app/admin/pedidos/index',category:'Tracker',obs:'Ordens de serviço.',source:'Fixo'},
 {id:'fixed-tracker-dispositivos',title:'TRACKER DISPOSITIVOS',url:'https://sp.tracker-net.app/admin/users/objects',category:'Tracker',obs:'Dispositivos/rastreadores.',source:'Fixo'},
 {id:'fixed-tracker-associado',title:'TRACKER ASSOCIADO',url:'https://sp.tracker-net.app/admin/users/clients',category:'Tracker',obs:'Associados/clientes.',source:'Fixo'},
