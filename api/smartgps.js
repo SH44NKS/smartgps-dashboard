@@ -12,6 +12,7 @@ const LINKS_DEFAULT_FILE = 'data/links.json';
 
 const ROUTE_ALIASES = {
   '/api/admin/clients': '/api/admin/get_clients',
+  '/api/admin/client_info': '/api/admin/clients/info',
   '/api/devices': '/api/get_devices',
   '/api/device': '/api/get_devices',
   '/api/get_technicians': '/api/admin/technicians',
@@ -33,6 +34,7 @@ const ALLOWED_PATHS = new Set([
   '/api/destroy_device',
   '/api/admin/get_clients',
   '/api/admin/client',
+  '/api/admin/clients/info',
   '/api/admin/technicians',
   '/api/admin/technicians/appointments',
   '/api/get_orders',
