@@ -46,6 +46,8 @@ const ALLOWED_PATHS = new Set([
 ]);
 
 const ALLOWED_PREFIXES = [
+  '/api/admin/device_get_imei/',
+  '/api/admin/device/',
   '/api/admin/technicians/',
 ];
 
