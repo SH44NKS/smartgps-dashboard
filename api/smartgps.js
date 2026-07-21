@@ -207,12 +207,20 @@ async function parseJsonResponse(response, source = 'servico') {
   try {
     return text ? JSON.parse(text) : {};
   } catch {
+    const contentType = response.headers.get('content-type') || '';
+    const raw = text.slice(0, 500);
+    let message = `Resposta nao JSON da ${source}`;
+    if (source === 'planilha' && /text\/html/i.test(contentType)) {
+      message = response.status === 404
+        ? 'Link do Web App da planilha invalido ou implantacao nao encontrada. Use o URL terminado em /exec.'
+        : 'A planilha retornou HTML. Confira se o Web App foi implantado como "Qualquer pessoa com o link" e se voce usou o URL /exec.';
+    }
     return {
       status: 0,
-      message: `Resposta nao JSON da ${source}`,
+      message,
       upstreamStatus: response.status,
-      contentType: response.headers.get('content-type') || '',
-      raw: text.slice(0, 500),
+      contentType,
+      raw,
     };
   }
 }
