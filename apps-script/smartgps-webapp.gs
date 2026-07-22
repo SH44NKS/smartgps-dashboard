@@ -38,6 +38,10 @@ function doPost(e) {
       return sgJson_(sgGetTypedRecords_('Retiradas'));
     }
 
+    if (action === 'get_maintenance_tracks') {
+      return sgJson_(sgGetTypedRecords_('Controle Manutencao'));
+    }
+
     if (action === 'update_record_status') {
       return sgJson_(sgUpdateRecordStatus_(payload.sheet, payload.id, payload.status, payload.patch || {}));
     }
@@ -99,6 +103,7 @@ function sgSchema_() {
     'Cancelamento': ['ID','Criado em','Data','Nome','CPF/CNPJ','Telefone','Placa','Rastreador','Motivo','Tecnico','Status','Observacoes','Origem'],
     'Controle Agenda': ['ID','Criado em','ID OS','Cliente','Placa','Tecnico','Tecnico ID','Data Servico','Hora','Status','Mensagem Tracker','Observacoes','Finalizado em','Origem'],
     'Retiradas': ['ID','Criado em','Data Entrada','Cliente','CPF/CNPJ','Telefone','Placa','Rastreador','Status','Observacoes','Finalizado em','Origem'],
+    'Controle Manutencao': ['ID','Criado em','Data Entrada','Cliente','CPF/CNPJ','Telefone','Placa','IMEI','Tecnico','Status','Prioridade','Observacoes','Finalizado em','Origem'],
     'Tasks': ['ID','Criado em','Data','Tarefa','Prioridade','Categoria','Responsavel','Status','Hora','Observacoes','Finalizado em','Origem'],
     'OS': ['ID','Criado em','Data','Nome','Telefone','Placa','Veiculo','Chassi','Servico','Tecnico','Consultor','Localizacao','Status','Observacoes','Origem'],
     'Dispositivos': ['Nome','IMEI','Placa','Tecnico','Status','Velocidade','Latitude','Longitude','Endereco','Ultima Comunicacao','Manutencao'],
@@ -274,6 +279,7 @@ function sgRouteOperationalRecord_(ss, type, record) {
   if (normalized === 'agendamentocontrole' || normalized === 'controle agenda') return sgAppendScheduleTrack_(ss, record);
   if (normalized === 'cancelamento') return sgAppendCancelamento_(ss, record);
   if (normalized === 'retiradacontrole' || normalized === 'retiradas') return sgAppendWithdrawal_(ss, record);
+  if (normalized === 'manutencaocontrole' || normalized === 'manutencaocrm' || normalized === 'controle manutencao') return sgAppendMaintenanceTrack_(ss, record);
   if (normalized === 'suspensao' || normalized === 'suspensÃ£o 120 dias') return sgAppendSuspensao_(ss, record);
   if (normalized === 'os' || normalized === 'ordem de serviÃ§o' || normalized === 'ordem de servico') return sgAppendOS_(ss, record);
   if (normalized === 'task' || normalized === 'tarefa') return sgAppendTask_(ss, record);
@@ -395,6 +401,29 @@ function sgAppendWithdrawal_(ss, record) {
   return { status: 1, message: 'Retirada salva no controle.', sheet: 'Retiradas', id: id };
 }
 
+function sgAppendMaintenanceTrack_(ss, record) {
+  var sheet = sgSheet_(ss, 'Controle Manutencao', sgSchema_()['Controle Manutencao']);
+  var id = record.id || sgId_('man');
+  sheet.appendRow([
+    id,
+    new Date(),
+    sgDate_(record.date || record.data || record.createdAt),
+    record.client || record.nome || record.client_name || '',
+    record.doc || record.cpf || record.document || '',
+    record.phone || record.telefone || '',
+    String(record.plate || record.placa || record.plate_number || '').toUpperCase(),
+    record.imei || record.tracker || record.rastreador || '',
+    record.technician || record.tecnico || record.technician_name || '',
+    record.status || 'Detectado',
+    record.priority || record.prioridade || 'Normal',
+    record.obs || record.observacoes || '',
+    record.finishedAt || '',
+    record.origem || record.origin || 'Sistema'
+  ]);
+  sheet.getRange(sheet.getLastRow(), 2, 1, 2).setNumberFormat('dd/MM/yyyy');
+  return { status: 1, message: 'Manutencao salva no controle.', sheet: 'Controle Manutencao', id: id };
+}
+
 function sgAppendSuspensao_(ss, record) {
   var sheet = sgSheet_(ss, 'Suspensao 120 dias', ['Empresa','ICCID','MSISDN','Ultima Conexao','Data Suspensao','Dias Passados','Dias Restantes','Situacao','Acao','Observacoes']);
   var today = new Date();
@@ -511,6 +540,7 @@ function sgGetOperationalRecords_() {
     ['Cancelamento','Cancelamento'],
     ['Controle Agenda','AgendamentoControle'],
     ['Retiradas','RetiradaControle'],
+    ['Controle Manutencao','ManutencaoControle'],
     ['Tasks','Task'],
     ['OS','OS']
   ];
