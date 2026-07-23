@@ -213,7 +213,7 @@ function sgApplyLegacyHeader_(ss, sheetName, title, color, headers) {
   var sheet = ss.getSheetByName(sheetName);
   if (!sheet) return;
   var cols = headers.length;
-  try { sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), cols)).breakApart(); } catch (err) {}
+  sgBreakHeaderMerges_(sheet);
   sheet.getRange(1, 1, 1, cols).merge();
   sheet.getRange(1, 1)
     .setValue(title)
@@ -230,6 +230,19 @@ function sgApplyLegacyHeader_(ss, sheetName, title, color, headers) {
     .setHorizontalAlignment('center');
   sheet.setFrozenRows(2);
   try { sheet.autoResizeColumns(1, cols); } catch (err) {}
+}
+
+function sgBreakHeaderMerges_(sheet) {
+  var maxCols = Math.max(sheet.getMaxColumns(), sheet.getLastColumn(), 12);
+  var headerArea = sheet.getRange(1, 1, 2, maxCols);
+  var merged = headerArea.getMergedRanges();
+  merged.forEach(function (range) {
+    var row = range.getRow();
+    var lastRow = row + range.getNumRows() - 1;
+    if (row <= 2 && lastRow >= 1) {
+      try { range.breakApart(); } catch (err) {}
+    }
+  });
 }
 
 function sgRepairLegacySheet_() {
