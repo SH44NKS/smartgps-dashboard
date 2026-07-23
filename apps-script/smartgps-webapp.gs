@@ -682,20 +682,45 @@ function sgGetLinks_() {
 function sgSheetRecords_(ss, sheetName, type) {
   var sheet = ss.getSheetByName(sheetName);
   if (!sheet || sheet.getLastRow() < 2) return [];
-  var values = sheet.getRange(1, 1, sheet.getLastRow(), sheet.getLastColumn()).getDisplayValues();
+  var headerRow = sgDetectHeaderRow_(sheet);
+  if (!headerRow) return [];
+  var values = sheet.getRange(headerRow, 1, sheet.getLastRow() - headerRow + 1, sheet.getLastColumn()).getDisplayValues();
   var headers = values.shift();
   return values
     .filter(function (row) { return row.some(function (cell) { return cell !== ''; }); })
     .map(function (row, index) {
       var obj = {};
       headers.forEach(function (h, i) { if (h) obj[h] = row[i] || ''; });
-      return { id: obj.ID || sheetName + '-' + (index + 2), tipo: type || sheetName, sheet: sheetName, row: index + 2, values: obj };
+      return { id: obj.ID || sheetName + '-' + (index + headerRow + 1), tipo: type || sheetName, sheet: sheetName, row: index + headerRow + 1, values: obj };
     });
+}
+
+function sgDetectHeaderRow_(sheet) {
+  var max = Math.min(sheet.getLastRow(), 6);
+  if (max < 1) return 0;
+  var width = Math.max(sheet.getLastColumn(), 12);
+  var rows = sheet.getRange(1, 1, max, width).getDisplayValues();
+  var best = 0;
+  var bestScore = -1;
+  rows.forEach(function (row, idx) {
+    var norm = row.map(function (v) { return sgNormHeader_(v); });
+    var score = 0;
+    ['NOME','CLIENTE','PLACA','CPF','CPF/CNPJ','RASTREADOR','TELEFONE','STATUS','DATA'].forEach(function (key) {
+      if (norm.indexOf(key) >= 0) score += 2;
+    });
+    if (norm[0] === 'DATA') score += 3;
+    if (norm[0] === 'ID' && norm.indexOf('CRIADO EM') >= 0) score += 1;
+    if (idx === 1 && norm.indexOf('NOME') >= 0 && norm.indexOf('PLACA') >= 0) score += 5;
+    if (score > bestScore) {
+      bestScore = score;
+      best = idx + 1;
+    }
+  });
+  return bestScore > 0 ? best : 0;
 }
 
 function sgGetOperationalRecords_() {
   var ss = sgDb_();
-  sgEnsureSchema_(ss);
   var sheets = [
     ['Cadastro','Cadastro'],
     ['Retirada','Retirada'],
@@ -713,7 +738,6 @@ function sgGetOperationalRecords_() {
 
 function sgGetTypedRecords_(sheetName) {
   var ss = sgDb_();
-  sgEnsureSchema_(ss);
   return { status: 1, records: sgSheetRecords_(ss, sheetName, sheetName) };
 }
 
