@@ -14,6 +14,10 @@ function doPost(e) {
       return sgJson_(sgSetupDatabase_(payload));
     }
 
+    if (action === 'repair_legacy_sheet') {
+      return sgJson_(sgRepairLegacySheet_());
+    }
+
     if (action === 'sync_dashboard') {
       return sgJson_(sgSyncDashboard_(payload));
     }
@@ -151,6 +155,74 @@ function sgSetupDatabase_(payload) {
     backupId: backup.getId(),
     backupUrl: backup.getUrl()
   };
+}
+
+function repararPlanilhaSemApagar() {
+  var result = sgRepairLegacySheet_();
+  try {
+    SpreadsheetApp.getActiveSpreadsheet().toast(result.message, 'Reparo', 8);
+  } catch (err) {}
+  return result;
+}
+
+function sgRepairLegacySheet_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var generated = [
+    'Dashboard',
+    'Controle Agenda',
+    'Retiradas',
+    'Controle Manutencao',
+    'Tasks',
+    'OS',
+    'Dispositivos',
+    'Pedidos',
+    'Estoque',
+    'Manutencao',
+    'Eventos'
+  ];
+  var hidden = [];
+  var kept = [];
+  ss.getSheets().forEach(function (sheet) {
+    var name = sheet.getName();
+    var shouldCheck = generated.indexOf(name) >= 0 || name.indexOf('_conflict') >= 0;
+    if (!shouldCheck) return;
+    if (sgSheetHasUserData_(sheet)) {
+      kept.push(name);
+      return;
+    }
+    try {
+      sheet.hideSheet();
+      hidden.push(name);
+    } catch (err) {
+      kept.push(name + ' (' + err.message + ')');
+    }
+  });
+  ['Controle de Cancelamentos','Task List','Agendamento','Cadastro','Retirada','Cancelamento','Suspensão 120 dias','links'].forEach(function (name) {
+    var sheet = ss.getSheetByName(name);
+    if (sheet) {
+      try { sheet.showSheet(); } catch (err) {}
+    }
+  });
+  var target = ss.getSheetByName('Cadastro') || ss.getSheetByName('Controle de Cancelamentos') || ss.getSheets()[0];
+  if (target) target.activate();
+  return {
+    status: 1,
+    message: 'Reparo concluido sem apagar dados. Abas vazias ocultadas: ' + hidden.length + '. Abas mantidas por terem dados: ' + kept.length + '.',
+    hidden: hidden,
+    kept: kept
+  };
+}
+
+function sgSheetHasUserData_(sheet) {
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  if (lastRow <= 1 || lastCol < 1) return false;
+  var startRow = Math.min(3, lastRow);
+  if (lastRow < startRow) return false;
+  var values = sheet.getRange(startRow, 1, lastRow - startRow + 1, lastCol).getDisplayValues();
+  return values.some(function (row) {
+    return row.some(function (cell) { return String(cell || '').trim() !== ''; });
+  });
 }
 
 function sgMigrateLegacy_(source, db) {
