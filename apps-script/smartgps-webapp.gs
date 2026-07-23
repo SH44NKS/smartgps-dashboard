@@ -18,6 +18,10 @@ function doPost(e) {
       return sgJson_(sgRepairLegacySheet_());
     }
 
+    if (action === 'restore_legacy_headers') {
+      return sgJson_(sgRestoreLegacyHeaders_());
+    }
+
     if (action === 'sync_dashboard') {
       return sgJson_(sgSyncDashboard_(payload));
     }
@@ -163,6 +167,69 @@ function repararPlanilhaSemApagar() {
     SpreadsheetApp.getActiveSpreadsheet().toast(result.message, 'Reparo', 8);
   } catch (err) {}
   return result;
+}
+
+function restaurarCabecalhosLegadosSemApagar() {
+  var result = sgRestoreLegacyHeaders_();
+  try {
+    SpreadsheetApp.getActiveSpreadsheet().toast(result.message, 'Cabecalhos', 8);
+  } catch (err) {}
+  return result;
+}
+
+function sgRestoreLegacyHeaders_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var restored = [];
+
+  sgApplyLegacyHeader_(ss, 'Cadastro', '➕ CADASTRO', '#1a237e', ['Data','Nome','CPF','Placa','Rastreador','Serviço','Telefone','Técnico','Status','Observações','Foto Veículo','Foto Rastreador']);
+  if (ss.getSheetByName('Cadastro')) restored.push('Cadastro');
+
+  sgApplyLegacyHeader_(ss, 'Retirada', '🔧 RETIRADA', '#1b5e20', ['Data','Nome','CPF','Placa','Rastreador','Serviço','Telefone','Técnico','Status','Observações','Foto Veículo','Foto Rastreador']);
+  if (ss.getSheetByName('Retirada')) restored.push('Retirada');
+
+  sgApplyLegacyHeader_(ss, 'Agendamento', '📅 AGENDAMENTO', '#e65100', ['Data','Nome','CPF','Placa','Telefone','Serviço','Localização','Técnico','Status','Observações']);
+  if (ss.getSheetByName('Agendamento')) restored.push('Agendamento');
+
+  sgApplyLegacyHeader_(ss, 'Cancelamento', '❌ CANCELAMENTO', '#b71c1c', ['Data','Nome','CPF','Placa','Rastreador','Motivo','Técnico','Status','Observações','']);
+  if (ss.getSheetByName('Cancelamento')) restored.push('Cancelamento');
+
+  sgApplyLegacyHeader_(ss, 'Controle de Cancelamentos', '✕ CONTROLE DE CANCELAMENTOS', '#c5161d', ['DATA CANCEL.','NOME','PLACA','RASTREADOR','TELEFONE','CONTATO?','RETORNO?','RETIRADO?','DATA RETIRADA','TÉCNICO RETIRADA','OBSERVAÇÕES']);
+  if (ss.getSheetByName('Controle de Cancelamentos')) restored.push('Controle de Cancelamentos');
+
+  sgApplyLegacyHeader_(ss, 'Suspensão 120 dias', '⏱️ SUSPENSÃO 120 DIAS', '#e65100', ['Empresa','ICCID','MSISDN','Última Conexão','Data Suspensão','Dias Passados','Dias Restantes','Situação','Ação','Observações']);
+  if (ss.getSheetByName('Suspensão 120 dias')) restored.push('Suspensão 120 dias');
+
+  sgApplyLegacyHeader_(ss, 'Task List', '✅ TASK LIST', '#1565c0', ['Data','Tarefa','Prioridade','Categoria','Responsável','Status','Hora','Observações']);
+  if (ss.getSheetByName('Task List')) restored.push('Task List');
+
+  return {
+    status: 1,
+    message: 'Cabecalhos restaurados sem apagar dados: ' + restored.join(', '),
+    restored: restored
+  };
+}
+
+function sgApplyLegacyHeader_(ss, sheetName, title, color, headers) {
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) return;
+  var cols = headers.length;
+  try { sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), cols)).breakApart(); } catch (err) {}
+  sheet.getRange(1, 1, 1, cols).merge();
+  sheet.getRange(1, 1)
+    .setValue(title)
+    .setBackground(color)
+    .setFontColor('#ffffff')
+    .setFontWeight('bold')
+    .setFontSize(13)
+    .setHorizontalAlignment('center');
+  sheet.getRange(2, 1, 1, cols)
+    .setValues([headers])
+    .setBackground(color)
+    .setFontColor('#ffffff')
+    .setFontWeight('bold')
+    .setHorizontalAlignment('center');
+  sheet.setFrozenRows(2);
+  try { sheet.autoResizeColumns(1, cols); } catch (err) {}
 }
 
 function sgRepairLegacySheet_() {
