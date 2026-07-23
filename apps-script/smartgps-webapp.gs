@@ -102,7 +102,7 @@ function sgSchema_() {
     'Retirada': ['ID','Criado em','Data','Nome','CPF/CNPJ','Telefone','Placa','Rastreador','Servico','Tecnico','Status','Observacoes','Origem'],
     'Cancelamento': ['ID','Criado em','Data','Nome','CPF/CNPJ','Telefone','Placa','Rastreador','Motivo','Tecnico','Status','Observacoes','Origem'],
     'Controle Agenda': ['ID','Criado em','ID OS','Cliente','Placa','Tecnico','Tecnico ID','Data Servico','Hora','Status','Mensagem Tracker','Observacoes','Finalizado em','Origem'],
-    'Retiradas': ['ID','Criado em','Data Entrada','Cliente','CPF/CNPJ','Telefone','Placa','Rastreador','Status','Observacoes','Finalizado em','Origem'],
+    'Retiradas': ['ID','Criado em','Data Entrada','Cliente','CPF/CNPJ','Telefone','Placa','Rastreador','Status','Ultimo Contato','Observacoes','Finalizado em','Origem'],
     'Controle Manutencao': ['ID','Criado em','Data Entrada','Cliente','CPF/CNPJ','Telefone','Placa','IMEI','Tecnico','Status','Prioridade','Observacoes','Finalizado em','Origem'],
     'Tasks': ['ID','Criado em','Data','Tarefa','Prioridade','Categoria','Responsavel','Status','Hora','Observacoes','Finalizado em','Origem'],
     'OS': ['ID','Criado em','Data','Nome','Telefone','Placa','Veiculo','Chassi','Servico','Tecnico','Consultor','Localizacao','Status','Observacoes','Origem'],
@@ -393,6 +393,7 @@ function sgAppendWithdrawal_(ss, record) {
     String(record.plate || record.placa || record.plate_number || '').toUpperCase(),
     record.tracker || record.rastreador || record.imei || '',
     record.status || 'Contato pendente',
+    record.lastContact || record.ultimoContato || '',
     record.obs || record.observacoes || record.motivo || '',
     record.finishedAt || '',
     record.origem || record.origin || 'Sistema'
@@ -587,7 +588,7 @@ function sgUpdateRecordStatus_(sheetName, id, status, patch) {
         if (col) sheet.getRange(r, col).setValue(patch[key]);
       });
       var finishCol = headers.indexOf('Finalizado em') + 1;
-      if (finishCol && ['Finalizado','Retirado','Cancelado'].indexOf(status) >= 0) sheet.getRange(r, finishCol).setValue(new Date());
+      if (finishCol && ['Finalizado','Retirado','Equipamento retirado','Encerrado','Resolvido','Cancelado'].indexOf(status) >= 0) sheet.getRange(r, finishCol).setValue(new Date());
       return { status: 1, message: 'Status atualizado.', sheet: sheetName, id: id };
     }
   }
