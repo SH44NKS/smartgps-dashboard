@@ -42,6 +42,10 @@ function doPost(e) {
       return sgJson_(sgGetTypedRecords_('Agendamento'));
     }
 
+    if (action === 'get_tasks') {
+      return sgJson_(sgGetTypedRecords_('Task List'));
+    }
+
     if (action === 'get_withdrawals' || action === 'get_cancellations') {
       return sgJson_(sgGetCancellationRecords_());
     }
@@ -56,6 +60,10 @@ function doPost(e) {
 
     if (action === 'update_schedule_status') {
       return sgJson_(sgUpdateScheduleStatus_(payload.id, payload.status, payload.patch || {}));
+    }
+
+    if (action === 'update_task_status') {
+      return sgJson_(sgUpdateTaskStatus_(payload.id, payload.status, payload.patch || {}));
     }
 
     if (action === 'update_cancellation_status') {
@@ -786,11 +794,12 @@ function sgAppendOS_(ss, record) {
 }
 
 function sgAppendTask_(ss, record) {
-  var sheet = sgSheet_(ss, 'Tasks', sgSchema_()['Tasks']);
-  var id = record.id || sgId_('tsk');
+  var sheet = ss.getSheetByName('Task List');
+  if (!sheet) {
+    sheet = ss.insertSheet('Task List');
+    sgApplyLegacyHeader_(ss, 'Task List', '✅ TASK LIST', '#1565c0', ['Data','Tarefa','Prioridade','Categoria','Responsável','Status','Hora','Observações']);
+  }
   sheet.appendRow([
-    id,
-    new Date(),
     sgDate_(record.data),
     record.tarefa || record.title || '',
     record.prio || record.priority || 'Normal',
@@ -798,12 +807,10 @@ function sgAppendTask_(ss, record) {
     record.resp || record.responsavel || '',
     record.status || 'Pendente',
     record.hora || '',
-    record.obs || record.observacoes || '',
-    record.finishedAt || '',
-    record.origem || record.origin || 'Sistema'
+    record.obs || record.observacoes || ''
   ]);
-  sheet.getRange(sheet.getLastRow(), 2, 1, 2).setNumberFormat('dd/MM/yyyy');
-  return { status: 1, message: 'Task salva na planilha.', sheet: 'Tasks', id: id };
+  sheet.getRange(sheet.getLastRow(), 1).setNumberFormat('dd/MM/yyyy');
+  return { status: 1, message: 'Task salva na aba Task List.', sheet: 'Task List', id: 'Task List-' + sheet.getLastRow(), row: sheet.getLastRow() };
 }
 function sgAppendLink_(ss, record) {
   var sheet = sgSheet_(ss, 'Links', sgSchema_()['Links']);
@@ -892,7 +899,7 @@ function sgGetOperationalRecords_() {
     ['Cancelamento','Cancelamento'],
     ['Controle Agenda','AgendamentoControle'],
     ['Controle Manutencao','ManutencaoControle'],
-    ['Tasks','Task'],
+    ['Task List','Task'],
     ['OS','OS']
   ];
   var records = [];
@@ -954,6 +961,17 @@ function sgUpdateScheduleStatus_(id, status, patch) {
   sheet.getRange(row, 9).setValue(status);
   if (patch.obs || patch.observacoes) sheet.getRange(row, 10).setValue(patch.obs || patch.observacoes);
   return { status: 1, message: 'Status do agendamento atualizado.', sheet: 'Agendamento', id: id, row: row };
+}
+
+function sgUpdateTaskStatus_(id, status, patch) {
+  var ss = sgDb_();
+  var sheet = ss.getSheetByName('Task List');
+  if (!sheet) return { status: 0, message: 'Aba Task List nao encontrada.' };
+  var row = Number(patch.row || String(id || '').replace(/\D/g, ''));
+  if (!row || row < 3 || row > sheet.getLastRow()) return { status: 0, message: 'Task nao encontrada: ' + id };
+  sheet.getRange(row, 6).setValue(status);
+  if (patch.obs || patch.observacoes) sheet.getRange(row, 8).setValue(patch.obs || patch.observacoes);
+  return { status: 1, message: 'Status da task atualizado.', sheet: 'Task List', id: id, row: row };
 }
 
 function sgDate_(value) {
