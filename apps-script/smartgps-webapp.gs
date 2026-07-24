@@ -39,7 +39,7 @@ function doPost(e) {
     }
 
     if (action === 'get_schedule_tracks') {
-      return sgJson_(sgGetTypedRecords_('Controle Agenda'));
+      return sgJson_(sgGetTypedRecords_('Agendamento'));
     }
 
     if (action === 'get_withdrawals' || action === 'get_cancellations') {
@@ -52,6 +52,10 @@ function doPost(e) {
 
     if (action === 'update_record_status') {
       return sgJson_(sgUpdateRecordStatus_(payload.sheet, payload.id, payload.status, payload.patch || {}));
+    }
+
+    if (action === 'update_schedule_status') {
+      return sgJson_(sgUpdateScheduleStatus_(payload.id, payload.status, payload.patch || {}));
     }
 
     if (action === 'update_cancellation_status') {
@@ -480,17 +484,26 @@ function sgAppendCadastroRetirada_(ss, sheetName, record) {
 }
 
 function sgAppendAgendamento_(ss, record) {
-  return sgAppendScheduleTrack_(ss, {
-    orderId: record.orderId || record.order_id || '',
-    client: record.nome || record.name || record.client_name || '',
-    plate: record.placa || record.plate || record.plate_number || '',
-    technician: record.tecnico || record.technician || '',
-    serviceDate: record.data || record.serviceDate || record.schedule_date || '',
-    time: record.hora || record.time || '',
-    status: record.status || 'Agendado',
-    obs: record.obs || record.observacoes || record.localizacao || record.local || record.address || '',
-    origem: record.origem || record.origin || 'Sistema'
-  });
+  var sheet = ss.getSheetByName('Agendamento');
+  if (!sheet) {
+    sheet = ss.insertSheet('Agendamento');
+    sgApplyLegacyHeader_(ss, 'Agendamento', '📅 AGENDAMENTO', '#e65100', ['Data','Nome','CPF','Placa','Telefone','Serviço','Localização','Técnico','Status','Observações']);
+  }
+  var row = [
+    sgDate_(record.data || record.serviceDate || record.schedule_date || record.date),
+    record.nome || record.name || record.client || record.client_name || '',
+    record.cpf || record.doc || record.document || '',
+    String(record.placa || record.plate || record.plate_number || '').toUpperCase(),
+    record.telefone || record.phone || '',
+    record.servico || record.service || 'Instalação',
+    record.localizacao || record.local || record.address || '',
+    record.tecnico || record.technician || record.technician_name || '',
+    record.status || 'Agendado',
+    record.obs || record.observacoes || ''
+  ];
+  sheet.appendRow(row);
+  sheet.getRange(sheet.getLastRow(), 1).setNumberFormat('dd/MM/yyyy');
+  return { status: 1, message: 'Agendamento salvo na aba Agendamento.', sheet: 'Agendamento', id: 'Agendamento-' + sheet.getLastRow(), row: sheet.getLastRow() };
 }
 
 function sgAppendCancelamento_(ss, record) {
@@ -930,6 +943,17 @@ function sgUpdateRecordStatus_(sheetName, id, status, patch) {
     }
   }
   return { status: 0, message: 'ID nao encontrado: ' + id };
+}
+
+function sgUpdateScheduleStatus_(id, status, patch) {
+  var ss = sgDb_();
+  var sheet = ss.getSheetByName('Agendamento');
+  if (!sheet) return { status: 0, message: 'Aba Agendamento nao encontrada.' };
+  var row = Number(patch.row || String(id || '').replace(/\D/g, ''));
+  if (!row || row < 3 || row > sheet.getLastRow()) return { status: 0, message: 'Agendamento nao encontrado: ' + id };
+  sheet.getRange(row, 9).setValue(status);
+  if (patch.obs || patch.observacoes) sheet.getRange(row, 10).setValue(patch.obs || patch.observacoes);
+  return { status: 1, message: 'Status do agendamento atualizado.', sheet: 'Agendamento', id: id, row: row };
 }
 
 function sgDate_(value) {
