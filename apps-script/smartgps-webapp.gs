@@ -769,28 +769,26 @@ function sgAppendSuspensao_(ss, record) {
 }
 
 function sgAppendOS_(ss, record) {
-  var sheet = sgSheet_(ss, 'OS', sgSchema_()['OS']);
   var id = record.id || sgId_('os');
-  sheet.appendRow([
-    id,
-    new Date(),
-    sgDate_(record.data),
-    record.nome || record.client_name || '',
-    record.telefone || record.client_phone || '',
-    String(record.placa || record.vehicle_plate || '').toUpperCase(),
-    record.veiculo || record.vehicle_model || '',
-    record.chassi || record.vehicle_chassi || '',
-    record.servico || record.service || 'Instalacao',
-    record.tecnico || record.technician || '',
-    record.consultor || '',
-    record.localizacao || record.client_address || '',
-    record.status || 'Agendado',
-    record.obs || record.observacoes || '',
-    record.origem || record.origin || 'Sistema'
-  ]);
-  sheet.getRange(sheet.getLastRow(), 2, 1, 2).setNumberFormat('dd/MM/yyyy');
-  sgAppendScheduleTrack_(ss, { orderId: id, client: record.nome || record.client_name || '', plate: record.placa || record.vehicle_plate || '', technician: record.tecnico || '', serviceDate: record.data || '', status: 'Aguardando', obs: 'OS registrada no sistema', origem: 'OS' });
-  return { status: 1, message: 'OS salva na planilha.', sheet: 'OS', id: id };
+  var obs = [
+    record.veiculo || record.vehicle_model ? 'Veiculo: ' + (record.veiculo || record.vehicle_model) : '',
+    record.chassi || record.vehicle_chassi ? 'Chassi: ' + (record.chassi || record.vehicle_chassi) : '',
+    record.consultor ? 'Consultor: ' + record.consultor : '',
+    record.obs || record.observacoes || ''
+  ].filter(Boolean).join(' | ');
+  return sgAppendAgendamento_(ss, {
+    id: id,
+    data: record.data || record.serviceDate || new Date(),
+    nome: record.nome || record.client_name || record.client || '',
+    cpf: record.cpf || record.doc || '',
+    placa: record.placa || record.vehicle_plate || record.chassi || record.vehicle_chassi || '',
+    telefone: record.telefone || record.client_phone || record.phone || '',
+    servico: record.servico || record.service || 'Instalação',
+    localizacao: record.localizacao || record.client_address || record.location || '',
+    tecnico: record.tecnico || record.technician || '',
+    status: record.status || 'Agendado',
+    obs: obs
+  });
 }
 
 function sgAppendTask_(ss, record) {
